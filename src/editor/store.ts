@@ -8,7 +8,7 @@ import type { FormatKey } from "@/lib/formats";
 import type { MediaUrls, Project } from "@/data";
 
 export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
-export type ToolKey = "media" | "themes" | "text" | "stickers" | "frames" | "draw" | "background" | "adjust" | "layers";
+export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "background" | "adjust" | "layers";
 export type LayerMove = "forward" | "backward" | "front" | "back";
 
 const HISTORY_LIMIT = 100;
@@ -52,6 +52,8 @@ interface EditorState {
   toggleLock: (id: string) => void;
   /** Swaps the whole document as one undo step. Changes with the same key close together share a step. */
   replaceDoc: (doc: Doc, key?: string) => void;
+  /** Changes the project's format together with the document that fits it. History is cleared, because an earlier layout belongs to the old shape. */
+  setFormat: (format: FormatKey, doc: Doc) => void;
   setBackground: (color: string) => void;
   /** Pass null to remove the pattern. */
   setPattern: (pattern: Pattern | null) => void;
@@ -244,6 +246,17 @@ export const useEditor = create<EditorState>()(
         remember(s, key);
         s.doc = doc;
         s.selectedId = null;
+        touch(s);
+      }),
+
+    setFormat: (format, doc) =>
+      set((s) => {
+        s.format = format;
+        s.doc = doc;
+        s.selectedId = null;
+        s.past = [];
+        s.future = [];
+        s.lastKey = null;
         touch(s);
       }),
 

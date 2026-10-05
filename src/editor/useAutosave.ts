@@ -23,7 +23,7 @@ export function useAutosave() {
     useEditor.getState().setSaveStatus("saving");
     let failed = false;
     try {
-      const { rev } = await data.saveProject(s.projectId, { rev: s.rev, doc: s.doc });
+      const { rev } = await data.saveProject(s.projectId, { rev: s.rev, doc: s.doc, format: s.format });
       useEditor.getState().markSaved(rev, version);
     } catch (e) {
       failed = true;
@@ -59,7 +59,7 @@ export function useAutosave() {
     const onExit = () => {
       const s = useEditor.getState();
       if (!s.projectId || s.docVersion === s.savedVersion || s.saveStatus === "conflict" || inflight.current) return;
-      data.saveProjectOnExit?.(s.projectId, { rev: s.rev, doc: s.doc });
+      data.saveProjectOnExit?.(s.projectId, { rev: s.rev, doc: s.doc, format: s.format });
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", onExit);
