@@ -82,10 +82,10 @@ export interface LayoutOptions {
   theme?: ThemeChoice;
 }
 
-/** The colours and font a theme shows for these photos: the model's picks where the theme allows, its own otherwise. */
+/** The colours a theme shows for these photos: the model's picks where the theme allows, its own otherwise. */
 export function resolveLook(theme: Theme, plan: ComposePlan): Look {
   const p = theme.palette;
-  return p.adapt ? { background: plan.background, ink: plan.ink, pattern: plan.pattern, font: plan.font } : { background: p.background, ink: p.ink, pattern: p.pattern, font: theme.font };
+  return p.adapt ? { background: plan.background, ink: plan.ink } : { background: p.background, ink: p.ink };
 }
 
 /** How many slides n photos get: the theme's share each, never more than five, never more than the plan allows. */
@@ -337,7 +337,7 @@ export function layoutCarousel(photos: LayoutPhoto[], plan: ComposePlan, opts: L
         h: textH,
         rotation: deg,
         locked: false,
-        text: { value: line.value, font: look.font, size, color: inkFor(theme.labelTint, look.ink), align: "center", bold: false },
+        text: { value: line.value, font: theme.font, size, color: inkFor(theme.labelTint, look.ink), align: "center", bold: false },
       });
     } else {
       const w = Math.round(W * 0.88);
@@ -354,7 +354,7 @@ export function layoutCarousel(photos: LayoutPhoto[], plan: ComposePlan, opts: L
         h,
         rotation: deg,
         locked: false,
-        text: { value: line.value, font: look.font, size, color: inkFor(look.background, look.ink), align: theme.align, bold: false },
+        text: { value: line.value, font: theme.font, size, color: inkFor(look.background, look.ink), align: theme.align, bold: false },
       });
     }
   });
@@ -365,7 +365,7 @@ export function layoutCarousel(photos: LayoutPhoto[], plan: ComposePlan, opts: L
     background: { type: "color", value: look.background },
     elements,
     compose: { seed: opts.seed ?? 1, theme: choice, plan, tags, order: photos.map((p) => p.id) },
-    ...(look.pattern === "none" ? {} : { pattern: makePattern(look.pattern, look.background, look.ink) }),
+    ...(theme.palette.pattern === "none" ? {} : { pattern: makePattern(theme.palette.pattern, look.background, look.ink) }),
   };
   // Our own output goes through the same schema the server applies to every saved document.
   return { doc: DocSchema.parse(doc), slideCount };

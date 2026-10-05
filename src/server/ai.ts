@@ -1,5 +1,5 @@
 import "server-only";
-import { CAPTION_FONTS, ModelOutputSchema, type ModelOutput } from "@/lib/plan";
+import { ModelOutputSchema, type ModelOutput } from "@/lib/plan";
 import { describeThemes, THEME_IDS } from "@/lib/themes";
 
 /** What the composer needs from a vision model. Tests supply a fake. */
@@ -18,9 +18,7 @@ Reply with one JSON object and nothing else: no prose, no code fence. Shape:
   "plan": {
     "theme": ${THEME_IDS.map((id) => `"${id}"`).join(" | ")},
     "background": hex colour,
-    "pattern": "grid" | "dots" | "lines" | "none",
     "ink": hex colour for captions,
-    "font": one of ${CAPTION_FONTS.map((f) => `"${f}"`).join(", ")},
     "title": optional string, max 40 chars,
     "captions": [0 to 6 strings, each max 40 chars]
   }
@@ -33,7 +31,7 @@ Rules:
 - "photos" has exactly one entry per image, in the order shown.
 - "focus" is where the eye goes in that photo (a face, the main object), as fractions from the top-left. It is used to centre crops.
 - Mark "hero" on the single best photo and no other.
-- Pick the theme that suits the photos as a set. Some themes keep their own colours, and then your background, pattern, ink and font are not used, but still fill them in.
+- Pick the theme that suits the photos as a set. Some themes keep their own colours, and then your background and ink are not used, but still fill them in. Patterns and fonts belong to the theme.
 - Pick a background that sits well with the photos' colours and is light and quiet. Pick "ink" dark enough to read on it.
 - Captions are short, lowercase, and warm, like what a person would write on a collage. No hashtags, no emoji, no quotation marks. Leave "captions" empty if nothing fits.`;
 

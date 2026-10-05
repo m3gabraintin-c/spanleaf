@@ -13,7 +13,7 @@ import {
 const PATTERNS = ["grid", "dots", "lines", "none"] as const;
 const lookOf = (t: Theme) => resolveLook(t, FALLBACK_PLAN);
 /** The colours a theme is designed with, before any model's picks. */
-const ownLook = (t: Theme): Look => ({ background: t.palette.background, ink: t.palette.ink, pattern: t.palette.pattern, font: t.font });
+const ownLook = (t: Theme): Look => ({ background: t.palette.background, ink: t.palette.ink });
 const clone = (t: Theme = THEMES.scrapbook) => structuredClone(t) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 describe("built-in themes", () => {
@@ -193,9 +193,9 @@ describe("customising a theme", () => {
         // Anything not named in the patch is as it was (the name aside, and palette and font when colours move).
         const { name: _n, ...was } = base;
         const { name: _m, ...now } = next;
-        const colour = "background" in patch || "pattern" in patch;
-        if (!colour) assert.deepEqual(now.palette, was.palette, `${id} palette`);
-        if (!colour) assert.equal(now.font, was.font, `${id} font`);
+        const palette = { ...was.palette, ...("background" in patch ? { background: patch.background, ink: look.ink, adapt: false } : {}), ...("pattern" in patch ? { pattern: patch.pattern } : {}) };
+        assert.deepEqual(now.palette, palette, `${id} palette`);
+        assert.equal(now.font, was.font, `${id} font never changes`);
         for (const k of ["layout", "perSlide", "bridge", "captionTilt", "align", "labelTint", "description", "shadow"] as const) assert.deepEqual(now[k], was[k], `${id} ${k}`);
         if (!("tilt" in patch)) assert.equal(now.tilt, was.tilt);
         if (!("caption" in patch)) assert.equal(now.caption, was.caption);
@@ -221,14 +221,19 @@ describe("customising a theme", () => {
     assert.equal(count, 6 * 3 * 5 * 2 * 2 * 2 * 2 * 4);
   });
 
-  it("changing a colour pins every colour and the font to what is showing, so a later restyle can't swap them", () => {
-    const plan = { ...FALLBACK_PLAN, background: "#abcdef", pattern: "lines" as const, ink: "#102030", font: "caveat" as const };
+  it("changing the background pins both colours to what is showing, so a later restyle can't swap them", () => {
+    const plan = { ...FALLBACK_PLAN, background: "#abcdef", ink: "#102030" };
     const look = resolveLook(THEMES.scrapbook, plan);
-    assert.deepEqual(look, { background: "#abcdef", ink: "#102030", pattern: "lines", font: "caveat" });
-    const next = customise(THEMES.scrapbook, { pattern: "dots" }, look);
-    assert.deepEqual(next.palette, { background: "#abcdef", ink: "#102030", pattern: "dots", adapt: false });
-    assert.equal(next.font, "caveat");
-    assert.deepEqual(resolveLook(next, { ...plan, background: "#000000", ink: "#ffffff", pattern: "grid", font: "inter" }), { background: "#abcdef", ink: "#102030", pattern: "dots", font: "caveat" });
+    assert.deepEqual(look, { background: "#abcdef", ink: "#102030" });
+    const next = customise(THEMES.scrapbook, { background: "#ffeedd" }, look);
+    assert.deepEqual(next.palette, { background: "#ffeedd", ink: "#102030", pattern: "grid", adapt: false });
+    assert.deepEqual(resolveLook(next, { ...plan, background: "#000000", ink: "#ffffff" }), { background: "#ffeedd", ink: "#102030" });
+  });
+
+  it("changing the pattern changes only the pattern, and the font is never touched", () => {
+    const next = customise(THEMES.scrapbook, { pattern: "dots" }, lookOf(THEMES.scrapbook));
+    assert.deepEqual(next.palette, { ...THEMES.scrapbook.palette, pattern: "dots" });
+    assert.equal(next.font, THEMES.scrapbook.font);
   });
 
   it("changing something that isn't a colour leaves a theme that follows the photos following them", () => {

@@ -28,7 +28,7 @@ const strip = (e: Element) => {
   const { id: _id, crop: _crop, ...rest } = e;
   return rest;
 };
-const ownLook = (b: ReturnType<typeof resolveTheme>) => ({ background: b.palette.background, ink: b.palette.ink, pattern: b.palette.pattern, font: b.font });
+const ownLook = (b: ReturnType<typeof resolveTheme>) => ({ background: b.palette.background, ink: b.palette.ink });
 
 describe("restyleDoc", () => {
   it("gives the same layout back for the same theme and seed (crops may differ by rounding)", () => {

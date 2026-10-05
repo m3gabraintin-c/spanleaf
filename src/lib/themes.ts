@@ -38,7 +38,7 @@ export const ThemeSchema = z.object({
     background: hex,
     ink: hex,
     pattern: z.enum(PATTERN_CHOICES),
-    /** Whether the colours and font the model picked for the photos replace these. */
+    /** Whether the background and ink the model picked for the photos replace these. */
     adapt: z.boolean(),
   }),
   decor: z.object({
@@ -205,12 +205,10 @@ export interface Customisation {
   caption: (typeof CAPTIONS)[number];
 }
 
-/** The colours and font a theme actually shows once the model's choices are taken into account. */
+/** The background and caption colours a theme actually shows once the model's choices are taken into account. */
 export interface Look {
   background: string;
   ink: string;
-  pattern: (typeof PATTERN_CHOICES)[number];
-  font: string;
 }
 
 const EDGE_MASKS: Record<Exclude<Edge, "mixed">, Theme["masks"][number]> = {
@@ -227,7 +225,7 @@ export function readCustomisation(theme: Theme, look: Look): Customisation {
   const { tapes, doodles } = theme.decor;
   return {
     background: look.background,
-    pattern: look.pattern,
+    pattern: theme.palette.pattern,
     tilt: theme.tilt,
     decorations: tapes + doodles === 0 ? "none" : tapes >= 2 && doodles >= 2 ? "lots" : "some",
     edges: only === "rect" ? "square" : only === "rounded" ? "rounded" : only === "torn" ? "torn" : only === "ellipse" ? "oval" : "mixed",
@@ -238,17 +236,15 @@ export function readCustomisation(theme: Theme, look: Look): Customisation {
 
 /**
  * A new theme from a base one with some controls changed. Only the controls in the patch change anything.
- * Changing a colour pins every colour and the font to what is showing now, so a later restyle can't swap
- * them for the model's picks.
+ * Changing the background pins both colours to what is showing now, so a later restyle can't swap them for
+ * the model's picks.
  */
 export function customise(base: Theme, patch: Partial<Customisation>, look: Look): Theme {
   const next: Theme = structuredClone(base);
   next.name = (base.name.endsWith(" (custom)") ? base.name : `${base.name.slice(0, 31)} (custom)`).slice(0, 40);
 
-  if (patch.background !== undefined || patch.pattern !== undefined) {
-    next.palette = { background: patch.background ?? look.background, ink: look.ink, pattern: patch.pattern ?? look.pattern, adapt: false };
-    next.font = look.font;
-  }
+  if (patch.background !== undefined) next.palette = { ...next.palette, background: patch.background, ink: look.ink, adapt: false };
+  if (patch.pattern !== undefined) next.palette.pattern = patch.pattern;
   if (patch.tilt !== undefined) next.tilt = patch.tilt;
   if (patch.caption !== undefined) next.caption = patch.caption;
   if (patch.decorations !== undefined) [next.decor.tapes, next.decor.doodles] = DECOR_COUNTS[patch.decorations];

@@ -25,7 +25,7 @@ class FakeAi implements ComposeAi {
     if (this.fail) throw new Error("model down");
     return {
       photos: images.map(() => tag),
-      plan: { theme: "scrapbook", background: MODEL_BACKGROUND, pattern: "grid", ink: "#2b2b2b", font: "caveat", title: "hello", captions: [] },
+      plan: { theme: "scrapbook", background: MODEL_BACKGROUND, ink: "#2b2b2b", title: "hello", captions: [] },
     };
   }
 }
@@ -173,7 +173,7 @@ describe("composeProject", () => {
   it("saves a custom theme with the project and reads it back whole", async () => {
     fresh();
     const base = resolveTheme("clean");
-    const custom = customise(base, { tilt: 5, edges: "oval", decorations: "lots" }, { background: base.palette.background, ink: base.palette.ink, pattern: base.palette.pattern, font: base.font });
+    const custom = customise(base, { tilt: 5, edges: "oval", decorations: "lots" }, { background: base.palette.background, ink: base.palette.ink });
     const p = await composeProject(deps(), alice, { mediaIds: await many(alice, 4), theme: custom, seed: 2 });
     assert.deepEqual(p.doc.compose?.theme, custom);
     const [row] = await t.sql`select doc from projects where id = ${p.id}`;

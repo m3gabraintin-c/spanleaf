@@ -6,7 +6,7 @@ import type { Element } from "@/lib/doc";
 import { FORMATS, type FormatKey } from "@/lib/formats";
 import { seeded } from "@/lib/geometry";
 import { cleanText } from "@/lib/look";
-import { CAPTION_FONTS, ComposePlanSchema, FALLBACK_PLAN, type ComposePlan, type PhotoTags } from "@/lib/plan";
+import { ComposePlanSchema, FALLBACK_PLAN, type ComposePlan, type PhotoTags } from "@/lib/plan";
 import { parseSticker } from "@/lib/stickers";
 import { customise, DECORATIONS, EDGES, CAPTIONS, resolveTheme, THEME_IDS, type Customisation, type Theme, type ThemeChoice } from "@/lib/themes";
 import { composeInput } from "@/server/schemas";
@@ -26,7 +26,7 @@ const run = (ps: LayoutPhoto[], p: ComposePlan = plan(), over: Partial<LayoutOpt
 const images = (els: Element[]) => els.filter((e) => e.type === "image");
 const slideOf = (e: Element) => Math.floor(centreOf(e)[0] / W);
 const tags = (over: Partial<PhotoTags> = {}): PhotoTags => ({ subject: "", mood: "", palette: ["#808080"], focus: { x: 0.5, y: 0.5 }, ...over });
-const ownLook = (b: Theme) => ({ background: b.palette.background, ink: b.palette.ink, pattern: b.palette.pattern, font: b.font });
+const ownLook = (b: Theme) => ({ background: b.palette.background, ink: b.palette.ink });
 
 describe("how many slides", () => {
   it("follows the theme's share, never more than five a slide, never more than the plan allows", () => {
@@ -114,16 +114,22 @@ describe("theme behaviour", () => {
     assert.ok(covered > 0.75, `covers ${covered}`);
   });
 
-  it("themes that follow the photos use the model's colours and font, the others keep their own", () => {
-    const p = plan({ background: "#abcdef", ink: "#102030", pattern: "dots", font: "caveat", captions: ["hi"] });
+  it("themes that follow the photos use the model's colours, the others keep their own, and every theme keeps its own pattern and font", () => {
+    const p = plan({ background: "#abcdef", ink: "#102030", captions: ["hi"] });
     for (const id of THEME_IDS) {
       const t = resolveTheme(id);
       const { doc } = run(photos(3), p, { theme: id });
       const text = doc.elements.find((e) => e.type === "text")!;
       assert.equal(doc.background.value, t.palette.adapt ? "#abcdef" : t.palette.background, id);
-      assert.equal(doc.pattern?.kind ?? "none", t.palette.adapt ? "dots" : t.palette.pattern, id);
-      assert.equal(text.text!.font, t.palette.adapt ? "caveat" : t.font, id);
+      assert.equal(doc.pattern?.kind ?? "none", t.palette.pattern, `${id} pattern`);
+      assert.equal(text.text!.font, t.font, `${id} font`);
     }
+  });
+  it("switching theme never carries one theme's pattern or font to another", () => {
+    const fonts = new Set(THEME_IDS.map((id) => run(photos(3), plan({ captions: ["hi"] }), { theme: id }).doc.elements.find((e) => e.type === "text")!.text!.font));
+    assert.ok(fonts.size >= 5, "the themes use different fonts");
+    assert.equal(run(photos(3), plan(), { theme: "editorial" }).doc.pattern, undefined);
+    assert.equal(run(photos(3), plan(), { theme: "dreamy" }).doc.pattern?.kind, "dots");
   });
   it("without a chosen theme it uses the one the model picked", () => {
     for (const id of THEME_IDS) {
@@ -284,7 +290,7 @@ describe("random layouts (fuzz)", () => {
         return { id: `p${k}`, width: Math.round(2000 * Math.sqrt(aspect)), height: Math.round(2000 / Math.sqrt(aspect)), tags: rand() < 0.6 ? tags({ focus: { x: rand(), y: rand() }, hero: rand() < 0.1 }) : undefined };
       });
       const captions = Array.from({ length: int(0, 6) }, () => cleanText(pick(words)) || "x").map((c) => c.slice(0, 40));
-      const p = ComposePlanSchema.parse({ theme: pick(THEME_IDS), background: hexColour(), pattern: pick(["grid", "dots", "lines", "none"]), ink: hexColour(), font: pick(CAPTION_FONTS), title: rand() < 0.5 ? cleanText(pick(words)).slice(0, 40) || undefined : undefined, captions });
+      const p = ComposePlanSchema.parse({ theme: pick(THEME_IDS), background: hexColour(), ink: hexColour(), title: rand() < 0.5 ? cleanText(pick(words)).slice(0, 40) || undefined : undefined, captions });
       let theme: ThemeChoice = rand() < 0.5 ? p.theme : pick(THEME_IDS);
       if (rand() < 0.5) {
         const b = resolveTheme(theme);
@@ -317,10 +323,10 @@ describe("saved layout details", () => {
 });
 
 describe("plan and request limits", () => {
-  const ok = { theme: "scrapbook", background: "#f4f1ea", pattern: "grid", ink: "#2b2b2b", font: "caveat", captions: ["me and coffee"] };
+  const ok = { theme: "scrapbook", background: "#f4f1ea", ink: "#2b2b2b", captions: ["me and coffee"] };
   it("accepts a normal plan", () => assert.ok(ComposePlanSchema.safeParse(ok).success));
-  it("refuses colours that aren't hex, fonts or themes that aren't on the list, too many or too long captions", () => {
-    for (const bad of [{ background: "red" }, { ink: "#fff" }, { font: "comic-sans" }, { theme: "neon" }, { pattern: "stripes" }, { captions: Array(7).fill("x") }, { captions: ["x".repeat(41)] }, { captions: [""] }, { title: "x".repeat(41) }]) {
+  it("refuses colours that aren't hex, themes that aren't on the list, too many or too long captions", () => {
+    for (const bad of [{ background: "red" }, { ink: "#fff" }, { theme: "neon" }, { captions: Array(7).fill("x") }, { captions: ["x".repeat(41)] }, { captions: [""] }, { title: "x".repeat(41) }]) {
       assert.ok(!ComposePlanSchema.safeParse({ ...ok, ...bad }).success, JSON.stringify(bad));
     }
   });

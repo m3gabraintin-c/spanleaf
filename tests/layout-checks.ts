@@ -93,7 +93,7 @@ export function checkLayout(photos: LayoutPhoto[], plan: ComposePlan, opts: Layo
     const back = theme.caption === "label" ? theme.labelTint : look.background;
     assert.ok(contrast(back, t.text!.color) >= 3, here(`caption ${t.text!.color} unreadable on ${back}`));
     assert.ok(Math.abs(t.rotation) <= theme.captionTilt + 0.05, here("caption tilt"));
-    assert.equal(t.text!.font, look.font, here("caption font"));
+    assert.equal(t.text!.font, theme.font, here("caption font"));
     assert.ok(images.some((i) => slideOf(i) === slideOf(t)), here("a caption on an empty slide"));
     for (const i of images) assert.ok(!hits(boxOf(t), boxOf(i)), here(`caption "${t.text!.value}" ${JSON.stringify(boxOf(t))} runs into photo ${i.mediaId} ${JSON.stringify(boxOf(i))}`));
   }
@@ -138,9 +138,9 @@ export function checkLayout(photos: LayoutPhoto[], plan: ComposePlan, opts: Layo
   assert.equal(doc.compose?.seed, opts.seed ?? 1, here("saved seed"));
   assert.deepEqual(doc.compose?.theme, opts.theme ?? plan.theme, here("saved theme"));
   assert.equal(doc.background.value, look.background, here("background"));
-  if (look.pattern === "none") assert.equal(doc.pattern, undefined, here("no pattern"));
+  if (theme.palette.pattern === "none") assert.equal(doc.pattern, undefined, here("no pattern"));
   else {
-    assert.equal(doc.pattern?.kind, look.pattern, here("pattern kind"));
+    assert.equal(doc.pattern?.kind, theme.palette.pattern, here("pattern kind"));
     assert.equal(doc.pattern?.color, mix(look.background, look.ink, 0.12), here("pattern colour"));
     assert.ok(contrast(look.background, doc.pattern!.color) < 1.7, here("pattern should stay quiet"));
   }
