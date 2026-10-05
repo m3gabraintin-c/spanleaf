@@ -7,7 +7,7 @@ Status: a working prototype, not a launched product. It runs in two modes, set w
 - **Demo mode** (default): everything is kept in the browser. No server, no accounts, no payments. This is what the browser tests run against.
 - **Real-backend mode** (`NEXT_PUBLIC_DATA_LAYER=api`): Supabase for accounts, database and photo storage, Stripe for billing. The code is written and tested against PostgreSQL with stand-ins for the live services. It has not been run against live Supabase or Stripe. Read `docs/production-setup.md` first.
 
-Known gaps: no cropping, no switching format after creating a project, the Frames, Draw and Adjust tools are placeholders, no upgrade or account screens, no favicon or app icon, placeholder terms and privacy pages. Nothing has been tested in Safari or on a real phone.
+Known gaps: the Draw tool is a placeholder (drawings aren't drawn yet), no cut-out stickers from your own photos (that needs a background-removal model), no upgrade or account screens, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust) are covered by unit tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
 
 ## Run it
 
