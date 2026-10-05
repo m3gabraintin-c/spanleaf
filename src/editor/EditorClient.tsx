@@ -28,6 +28,7 @@ import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
 import { AdjustPanel } from "./panels/AdjustPanel";
 import { CropPanel } from "./panels/CropPanel";
+import { DrawPanel } from "./panels/DrawPanel";
 import { FramesPanel } from "./panels/FramesPanel";
 import { SizePanel } from "./panels/SizePanel";
 import { StickersPanel } from "./panels/StickersPanel";
@@ -261,6 +262,7 @@ function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "text") return <TextPanel />;
   if (tool === "stickers") return <StickersPanel />;
   if (tool === "frames") return <FramesPanel />;
+  if (tool === "draw") return <DrawPanel />;
   if (tool === "adjust") return <AdjustPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;

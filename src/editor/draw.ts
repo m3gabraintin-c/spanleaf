@@ -1,5 +1,6 @@
 import type { Element, Pattern } from "@/lib/doc";
 import { maskPolygon, sourceRect } from "@/lib/geometry";
+import { localPoints, type Point } from "@/lib/stroke";
 
 /** Drawing helpers that work on a plain 2D canvas context, so Konva shapes and the export share them. */
 type Ctx = CanvasRenderingContext2D;
@@ -86,4 +87,39 @@ export function drawPattern(c: Ctx, p: Pattern, width: number, height: number) {
     c.stroke();
   }
   c.restore();
+}
+
+/** The parts of a canvas context needed to lay out a line. Konva's own context has them too, so hit testing can share this. */
+export type PathCtx = Pick<CanvasRenderingContext2D, "beginPath" | "moveTo" | "lineTo" | "quadraticCurveTo">;
+
+/** Lays out a smooth line through the points: curves that pass through the middle of each pair. One point makes a dot. */
+export function tracePath(c: PathCtx, pts: readonly Point[]) {
+  c.beginPath();
+  c.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 1) {
+    c.lineTo(pts[0].x + 0.01, pts[0].y); // with round ends, this is a dot
+    return;
+  }
+  for (let i = 1; i < pts.length - 1; i++) {
+    c.quadraticCurveTo(pts[i].x, pts[i].y, (pts[i].x + pts[i + 1].x) / 2, (pts[i].y + pts[i + 1].y) / 2);
+  }
+  c.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+}
+
+/** Draws one line, in whatever coordinates the points are in. Opacity is left to the caller. */
+export function drawLine(c: Ctx, pts: readonly Point[], color: string, width: number) {
+  if (pts.length === 0) return;
+  c.save();
+  c.strokeStyle = color;
+  c.lineWidth = width;
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  tracePath(c, pts);
+  c.stroke();
+  c.restore();
+}
+
+/** Draws a drawing layer's stroke. Opacity is not handled here, because Konva applies the node's before it calls this. */
+export function drawStroke(c: Ctx, el: Element) {
+  if (el.stroke) drawLine(c, localPoints(el), el.stroke.color, el.stroke.width);
 }

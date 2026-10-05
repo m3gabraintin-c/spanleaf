@@ -40,6 +40,17 @@ export const AdjustSchema = z.object({
 export const WHITE_BORDER = { color: "#ffffff", width: 10 };
 export const SOFT_SHADOW = { color: "#000000", blur: 24, x: 0, y: 10, opacity: 0.22 };
 
+/** One freehand stroke. Points are x, y pairs as fractions of the layer's box, so the drawing scales with the layer. */
+export const StrokeSchema = z.object({
+  color: hex,
+  width: z.number().min(1).max(200),
+  points: z
+    .array(z.number().min(0).max(1))
+    .min(2)
+    .max(400)
+    .refine((p) => p.length % 2 === 0, "Points come in pairs."),
+});
+
 export const PATTERN_KINDS = ["grid", "dots", "lines"] as const;
 
 /** A repeating pattern drawn over the background colour, under every element. */
@@ -52,5 +63,6 @@ export const PatternSchema = z.object({
 });
 
 export type Adjust = z.infer<typeof AdjustSchema>;
+export type Stroke = z.infer<typeof StrokeSchema>;
 export type Mask = z.infer<typeof MaskSchema>;
 export type Pattern = z.infer<typeof PatternSchema>;

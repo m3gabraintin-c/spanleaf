@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AdjustSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema } from "./look";
+import { AdjustSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema, StrokeSchema } from "./look";
 import { ComposeMetaSchema } from "./plan";
 
 /**
@@ -57,7 +57,12 @@ export const ElementSchema = z.object({
   shadow: ShadowSchema.optional(),
   opacity: z.number().min(0).max(1).optional(),
   adjust: AdjustSchema.optional(),
+  /** For a drawing layer: the line that was drawn. */
+  stroke: StrokeSchema.optional(),
 });
+
+/** The most layers a project can hold. */
+export const MAX_ELEMENTS = 500;
 
 export const DocSchema = z.object({
   v: z.literal(1),
@@ -65,7 +70,7 @@ export const DocSchema = z.object({
   pattern: PatternSchema.optional(),
   /** How a carousel made from photos was laid out, kept so it can be restyled. See restyle.ts. */
   compose: ComposeMetaSchema.optional(),
-  elements: z.array(ElementSchema).max(500),
+  elements: z.array(ElementSchema).max(MAX_ELEMENTS),
 });
 
 export type Crop = z.infer<typeof CropSchema>;

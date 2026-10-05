@@ -4,11 +4,12 @@ import { immer } from "zustand/middleware/immer";
 import { inkFor } from "@/lib/colour";
 import { uid, type Doc, type Element, type Pattern } from "@/lib/doc";
 import { makePattern } from "@/lib/pattern";
+import { DEFAULT_PEN, MAX_PEN_SIZE, MIN_PEN_SIZE, type Pen } from "@/lib/stroke";
 import type { FormatKey } from "@/lib/formats";
 import type { MediaUrls, Project } from "@/data";
 
 export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
-export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "background" | "adjust" | "layers";
+export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "cutout" | "background" | "adjust" | "layers";
 export type LayerMove = "forward" | "backward" | "front" | "back";
 
 const HISTORY_LIMIT = 100;
@@ -30,6 +31,8 @@ interface EditorState {
   selectedId: string | null;
   zoom: number;
   tool: ToolKey | null;
+  /** The pen the Draw tool is using. Not saved with the project. */
+  pen: Pen;
   mediaUrls: Record<string, MediaUrls>;
   /** Photos the project uses whose files can no longer be found. */
   mediaMissing: Record<string, true>;
@@ -41,11 +44,14 @@ interface EditorState {
   lastAt: number;
 
   load: (p: Project) => void;
-  addElement: (el: Element) => void;
+  /** Adds a layer on top. It is selected unless select is false. */
+  addElement: (el: Element, opts?: { select?: boolean }) => void;
   updateElement: (id: string, patch: Partial<Element>, opts?: { key?: string }) => void;
   /** For values worked out by the editor itself (a text layer's height). Saved, but not an undo step. */
   measureElement: (id: string, patch: Partial<Element>) => void;
   removeElement: (id: string) => void;
+  /** Removes several layers as one undo step. Calls with the same key close together share a step. */
+  removeElements: (ids: string[], key?: string) => void;
   duplicateElement: (id: string, offset?: number, bounds?: { w: number; h: number }) => string | null;
   moveLayer: (id: string, how: LayerMove) => void;
   reorderLayer: (id: string, toIndex: number) => void;
@@ -62,6 +68,7 @@ interface EditorState {
   select: (id: string | null) => void;
   setZoom: (z: number) => void;
   setTool: (t: ToolKey | null) => void;
+  setPen: (patch: Partial<Pen>) => void;
   addMediaUrls: (urls: Record<string, MediaUrls>) => void;
   setMediaMissing: (ids: string[]) => void;
   setSaveStatus: (s: SaveStatus, error?: string | null) => void;
@@ -105,6 +112,7 @@ export const useEditor = create<EditorState>()(
     selectedId: null,
     zoom: 1,
     tool: "media",
+    pen: DEFAULT_PEN,
     mediaUrls: {},
     mediaMissing: {},
     announcement: "",
@@ -133,11 +141,11 @@ export const useEditor = create<EditorState>()(
         s.lastKey = null;
       }),
 
-    addElement: (el) =>
+    addElement: (el, opts) =>
       set((s) => {
         remember(s);
         s.doc.elements.push(el);
-        s.selectedId = el.id;
+        if (opts?.select !== false) s.selectedId = el.id;
         touch(s);
       }),
 
@@ -181,6 +189,16 @@ export const useEditor = create<EditorState>()(
         remember(s);
         s.doc.elements.splice(i, 1);
         if (s.selectedId === id) s.selectedId = null;
+        touch(s);
+      }),
+
+    removeElements: (ids, key) =>
+      set((s) => {
+        const gone = new Set(ids);
+        if (!s.doc.elements.some((e) => gone.has(e.id))) return;
+        remember(s, key);
+        s.doc.elements = s.doc.elements.filter((e) => !gone.has(e.id));
+        if (s.selectedId && gone.has(s.selectedId)) s.selectedId = null;
         touch(s);
       }),
 
@@ -304,6 +322,11 @@ export const useEditor = create<EditorState>()(
     select: (id) => set((s) => void (s.selectedId = id)),
     setZoom: (z) => set((s) => void (s.zoom = Math.min(4, Math.max(0.25, z)))),
     setTool: (t) => set((s) => void (s.tool = t)),
+    setPen: (patch) =>
+      set((s) => {
+        const next = { ...s.pen, ...patch };
+        s.pen = { ...next, size: Math.min(MAX_PEN_SIZE, Math.max(MIN_PEN_SIZE, next.size)) };
+      }),
     addMediaUrls: (urls) =>
       set((s) => {
         Object.assign(s.mediaUrls, urls);
