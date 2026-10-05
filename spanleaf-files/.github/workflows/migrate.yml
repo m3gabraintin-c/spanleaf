@@ -1,0 +1,28 @@
+# Applies the database migrations to PRODUCTION. Run by hand from the Actions tab, and only after a person approves it.
+# Migrations only go forward. Take a backup first (see docs/production-setup.md).
+# Written, not run: this file has never been executed on GitHub.
+name: migrate-production
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # Create an environment called "production" in the repo settings, add yourself as a required reviewer,
+    # and put the secret PRODUCTION_DATABASE_URL (the DIRECT connection string, port 5432) in it.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      - name: Check that the browser roles are locked out and the server's role works
+        run: node scripts/check-rls.mjs
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}

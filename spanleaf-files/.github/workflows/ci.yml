@@ -1,0 +1,57 @@
+# Runs on every pull request and every push to main. Nothing here touches production.
+# Written, not run: this file has never been executed on GitHub.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # the tests create and drop their own databases, so this role must be a superuser (the image's default user is)
+          POSTGRES_USER: tester
+          POSTGRES_PASSWORD: tester
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tester" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Backend tests (database, access rules, billing, jobs)
+        run: npm test
+      - name: Build in demo mode (the browser tests run against this)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_DATA_LAYER: ""
+      - run: npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: npm run test:e2e
+      - name: Build in real-backend mode, with dummy values, to catch build errors in that mode
+        run: npm run build
+        env:
+          NEXT_PUBLIC_DATA_LAYER: api
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-key
+          DATABASE_URL: postgres://tester:tester@localhost:5432/postgres
+          STRIPE_SECRET_KEY: sk_test_ci_dummy
+          STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+          STRIPE_PRICE_ID: price_ci_dummy
+          APP_URL: http://localhost:3000
+          CRON_SECRET: ci-dummy-cron-secret-0123456789
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-output/pw
