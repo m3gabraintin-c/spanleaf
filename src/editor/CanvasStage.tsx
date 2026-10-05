@@ -10,6 +10,8 @@ import { token, tokenPx } from "@/lib/tokens-runtime";
 import { FloatingElementMenu, IconButton } from "@/ui";
 import { sourceRect } from "@/lib/geometry";
 import { STICKERS, parseSticker, stickerDataUrl } from "@/lib/stickers";
+import { isAdjusted } from "@/lib/adjust";
+import { adjustedSource } from "./adjusted";
 import { drawMaskedImage, drawPattern, elementPolygon } from "./draw";
 import { canvasRegistry, type ImageStatus } from "./registry";
 import { useEditor } from "./store";
@@ -186,13 +188,13 @@ function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; mis
 
   // A cut shape or a border needs our own drawing. Everything else stays a plain Konva image,
   // which is what the editor tests look for.
-  if (el.mask || el.outline) {
+  if (el.mask || el.outline || isAdjusted(el.adjust)) {
     return (
       <Shape
         {...common}
         opacity={opacity}
         sceneFunc={(ctx) => {
-          if (img) drawMaskedImage(ctx._context, img, el);
+          if (img) drawMaskedImage(ctx._context, adjustedSource(img, el.adjust), el);
         }}
         hitFunc={(ctx, shape) => {
           const p = elementPolygon(el);

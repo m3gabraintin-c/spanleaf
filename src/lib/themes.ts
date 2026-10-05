@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { FONTS } from "./fonts.generated";
-import { hex, MaskSchema, OutlineSchema, PATTERN_KINDS, ShadowSchema, text } from "./look";
+import { hex, MaskSchema, OutlineSchema, PATTERN_KINDS, ShadowSchema, SOFT_SHADOW, text, WHITE_BORDER } from "./look";
 import { DOODLE_IDS, TAPE_IDS } from "./stickers";
 
 /**
@@ -54,8 +54,6 @@ export const ThemeSchema = z.object({
 export type Theme = z.infer<typeof ThemeSchema>;
 
 const SCRAPBOOK_MASKS: Theme["masks"] = [{ shape: "torn" }, { shape: "rect" }, { shape: "rounded", radius: 0.06 }, { shape: "torn" }];
-const SOFT_SHADOW = { color: "#000000", blur: 24, x: 0, y: 10, opacity: 0.22 };
-const WHITE_BORDER = { color: "#ffffff", width: 10 };
 const DECOR_BASE = {
   tapeIds: TAPE_IDS,
   doodleIds: DOODLE_IDS,
@@ -211,7 +209,7 @@ export interface Look {
   ink: string;
 }
 
-const EDGE_MASKS: Record<Exclude<Edge, "mixed">, Theme["masks"][number]> = {
+export const EDGE_MASKS: Record<Exclude<Edge, "mixed">, Theme["masks"][number]> = {
   square: { shape: "rect" },
   rounded: { shape: "rounded", radius: 0.06 },
   torn: { shape: "torn" },

@@ -29,9 +29,11 @@ export function elementPolygon(el: Pick<Element, "w" | "h" | "mask">) {
  * suit ordinary photos. A cutout sticker with a soft edge should have its white border baked into the
  * PNG when the background is removed.
  */
-export function drawMaskedImage(c: Ctx, img: HTMLImageElement, el: Element) {
+export function drawMaskedImage(c: Ctx, img: HTMLImageElement | HTMLCanvasElement, el: Element) {
   const pts = elementPolygon(el);
-  const { sx, sy, sw, sh } = sourceRect(el.crop, img.naturalWidth, img.naturalHeight);
+  // An adjusted copy is a canvas, possibly smaller than the photo. A crop is a fraction either way.
+  const full = "naturalWidth" in img ? { w: img.naturalWidth, h: img.naturalHeight } : { w: img.width, h: img.height };
+  const { sx, sy, sw, sh } = sourceRect(el.crop, full.w, full.h);
 
   const border = el.outline && el.outline.width > 0 ? el.outline : null;
   if (border || el.shadow) {

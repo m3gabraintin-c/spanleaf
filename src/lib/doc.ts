@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema } from "./look";
+import { AdjustSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema } from "./look";
 import { ComposeMetaSchema } from "./plan";
 
 /**
@@ -56,6 +56,7 @@ export const ElementSchema = z.object({
   outline: OutlineSchema.optional(),
   shadow: ShadowSchema.optional(),
   opacity: z.number().min(0).max(1).optional(),
+  adjust: AdjustSchema.optional(),
 });
 
 export const DocSchema = z.object({

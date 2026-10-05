@@ -204,6 +204,13 @@ describe("drawing", () => {
     assert.equal(props.shadowOffsetY, 9);
     assert.equal(props.shadowColor, "transparent");
   });
+  it("an adjusted copy is a canvas, maybe smaller than the photo, and a crop is still read as a fraction of it", () => {
+    const canvas = { width: 1000, height: 500 } as HTMLCanvasElement;
+    const { ctx, calls } = recorder();
+    drawMaskedImage(ctx, canvas, { ...base, w: 400, h: 500, crop: { x: 0.25, y: 0, w: 0.5, h: 1 } } as Element);
+    assert.deepEqual(calls.find((c) => c[0] === "drawImage"), ["drawImage", canvas, 250, 0, 500, 500, 0, 0, 400, 500]);
+  });
+
   it("a shadow with no border fills the shape in black first, and a border 0 wide is no border at all", () => {
     const only = recorder();
     drawMaskedImage(only.ctx, img, { ...base, shadow: { color: "#000000", blur: 20, x: 3, y: 9, opacity: 0.5 } } as Element);

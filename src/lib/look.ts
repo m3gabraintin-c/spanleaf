@@ -27,6 +27,19 @@ export const ShadowSchema = z.object({
   opacity: z.number().min(0).max(1),
 });
 
+/** Changes to how a photo looks, each from -100 to 100, where 0 is as shot. */
+export const AdjustSchema = z.object({
+  brightness: z.number().min(-100).max(100),
+  contrast: z.number().min(-100).max(100),
+  saturation: z.number().min(-100).max(100),
+  /** Positive is warmer (more red, less blue), negative is cooler. */
+  warmth: z.number().min(-100).max(100),
+});
+
+/** What a border and a shadow start as when someone switches one on. */
+export const WHITE_BORDER = { color: "#ffffff", width: 10 };
+export const SOFT_SHADOW = { color: "#000000", blur: 24, x: 0, y: 10, opacity: 0.22 };
+
 export const PATTERN_KINDS = ["grid", "dots", "lines"] as const;
 
 /** A repeating pattern drawn over the background colour, under every element. */
@@ -38,5 +51,6 @@ export const PatternSchema = z.object({
   thickness: z.number().min(0.5).max(8),
 });
 
+export type Adjust = z.infer<typeof AdjustSchema>;
 export type Mask = z.infer<typeof MaskSchema>;
 export type Pattern = z.infer<typeof PatternSchema>;

@@ -26,7 +26,9 @@ import { canvasRegistry } from "./registry";
 import { BackgroundPanel } from "./panels/BackgroundPanel";
 import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
+import { AdjustPanel } from "./panels/AdjustPanel";
 import { CropPanel } from "./panels/CropPanel";
+import { FramesPanel } from "./panels/FramesPanel";
 import { SizePanel } from "./panels/SizePanel";
 import { StickersPanel } from "./panels/StickersPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
@@ -258,6 +260,8 @@ function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "size") return <SizePanel />;
   if (tool === "text") return <TextPanel />;
   if (tool === "stickers") return <StickersPanel />;
+  if (tool === "frames") return <FramesPanel />;
+  if (tool === "adjust") return <AdjustPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;
   const t = TOOLS.find((x) => x.key === tool)!;
