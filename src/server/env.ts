@@ -35,3 +35,11 @@ export const stripeEnv = () =>
   });
 
 export const cronEnv = () => read("cron jobs", { CRON_SECRET: z.string().min(16) });
+
+/** Optional. Without a key the composer still works, with plain defaults instead of the model's choices. */
+export const aiEnv = () =>
+  read("the AI composer", {
+    ANTHROPIC_API_KEY: z.string().min(1),
+    // A blank line in .env counts as unset.
+    COMPOSE_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().min(1).default("claude-sonnet-5-5")),
+  });

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, ImagePlus, Plus } from "lucide-react";
 import { data, type ProjectSummary } from "@/data";
 import { FORMATS } from "@/lib/formats";
 import { AppShell, useRequireUser } from "@/components/AppChrome";
@@ -28,10 +28,16 @@ export default function ProjectsPage() {
       <main className="mx-auto max-w-(--layout-content-max) px-4 py-8">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-xl font-bold">Your projects</h1>
-          <Link href="/app/new" className={buttonClasses("primary", "md")}>
-            <Plus aria-hidden className="mr-2 size-4" />
-            New project
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/app/photos" className={buttonClasses("secondary", "md")}>
+              <ImagePlus aria-hidden className="mr-2 size-4" />
+              Start from photos
+            </Link>
+            <Link href="/app/new" className={buttonClasses("primary", "md")}>
+              <Plus aria-hidden className="mr-2 size-4" />
+              New project
+            </Link>
+          </div>
         </div>
 
         <div className="mt-8">

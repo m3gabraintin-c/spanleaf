@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DocSchema } from "@/lib/doc";
-import { ACCEPTED_IMAGE_TYPES, FORMAT_KEYS, MAX_IMAGE_EDGE, MAX_UPLOAD_BYTES } from "@/lib/formats";
+import { ACCEPTED_IMAGE_TYPES, FORMAT_KEYS, MAX_BATCH_PHOTOS, MAX_IMAGE_EDGE, MAX_UPLOAD_BYTES } from "@/lib/formats";
 
 /** Input shapes for every route. The same schemas run in the tests. */
 const format = z.enum(FORMAT_KEYS as [string, ...string[]]);
@@ -46,6 +46,13 @@ export const templatesInput = z.object({
 export const assetsInput = z.object({
   kind: z.enum(["sticker", "frame"]),
   category: z.string().max(40).optional(),
+});
+
+export const composeInput = z.object({
+  mediaIds: z.array(z.string().uuid()).min(1).max(MAX_BATCH_PHOTOS),
+  format: format.optional(),
+  title: title.optional(),
+  seed: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 export const checkoutInput = z.object({ returnTo: z.string().max(200).optional() });

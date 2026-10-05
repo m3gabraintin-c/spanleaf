@@ -39,6 +39,15 @@ DATABASE_URL=<direct connection string> node scripts/check-rls.mjs # do the acce
 DATABASE_URL=<development database only> npm run db:seed          # fake templates and sticker records
 ```
 
+## Start from photos (the AI composer)
+
+`/app/photos` takes up to 30 photos, uploads them three at a time, and makes a finished carousel from them. The arrangement is split in two on purpose:
+
+- A vision model (`src/server/ai.ts`) looks at small thumbnails and decides only what needs taste: each photo's focus point and best shot, plus a style, background colour, pattern, caption font, title and captions.
+- A plain function (`src/lib/compose.ts`, `layoutCarousel`) does all the geometry: slide count, positions, crops, tilt, torn edges, and the photo that runs across each slide edge. Same seed gives the same result, and its output goes through the same `DocSchema` as every saved document.
+
+The model's reply is validated strictly (hex colours, a fixed font list, short single-line text). If the model is missing, slow or wrong, the carousel is still made with plain defaults. Set `ANTHROPIC_API_KEY` (and optionally `COMPOSE_MODEL`) to turn it on. Demo mode has no model and always uses the defaults. The route is limited to 12 requests an hour per person, because each one can cost a model call.
+
 ## Design tokens and fonts
 
 Colours, type, spacing and radii live in `design/tokens.json`. After editing it:

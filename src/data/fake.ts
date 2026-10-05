@@ -2,6 +2,7 @@ import { createStore, get, set, keys, getMany } from "idb-keyval";
 import { DocSchema, EMPTY_DOC, mediaIdsOf, uid } from "@/lib/doc";
 import { MAX_SLIDES_FREE, FORMAT_KEYS } from "@/lib/formats";
 import { prepareImage } from "@/lib/image";
+import { FALLBACK_PLAN, FALLBACK_TAGS, layoutCarousel } from "@/lib/compose";
 import {
   DataError,
   type DataLayer,
@@ -134,6 +135,35 @@ const fake: DataLayer = {
       doc: structuredClone(EMPTY_DOC),
       rev: 0,
       mediaIds: [],
+      createdAt: now,
+      updatedAt: now,
+      ownerId: me.id,
+    };
+    await set(`project:${p.id}`, p, store);
+    return p;
+  },
+
+  async composeProject({ mediaIds, format = "portrait_4_5", title, seed }) {
+    const me = await requireUser();
+    if (mediaIds.length === 0) throw new DataError("INVALID", "Choose at least one photo.");
+    if (new Set(mediaIds).size !== mediaIds.length) throw new DataError("INVALID", "The same photo was chosen twice.");
+    const media = await Promise.all(mediaIds.map((id) => get<StoredMedia>(`media:${id}`, store)));
+    if (media.some((m) => !m || (m.ownerId && m.ownerId !== me.id))) throw new DataError("INVALID", "Some of those photos aren't yours or aren't ready.");
+    // No model in the browser demo, so the carousel gets the plain defaults.
+    const { doc, slideCount } = layoutCarousel(
+      media.map((m) => ({ id: m!.record.id, width: m!.record.width, height: m!.record.height, name: m!.record.name, tags: FALLBACK_TAGS })),
+      FALLBACK_PLAN,
+      { format, maxSlides: me.maxSlides, seed: seed ?? Math.floor(Math.random() * 1_000_000) },
+    );
+    const now = new Date().toISOString();
+    const p: StoredProject = {
+      id: uid(),
+      title: title?.trim() || "My carousel",
+      format,
+      slideCount,
+      doc: DocSchema.parse(doc),
+      rev: 1,
+      mediaIds: mediaIdsOf(doc),
       createdAt: now,
       updatedAt: now,
       ownerId: me.id,

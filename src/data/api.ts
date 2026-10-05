@@ -122,6 +122,10 @@ const api: DataLayer = {
     return (await call<{ project: Project }>("POST", "/api/projects", input)).project;
   },
 
+  async composeProject(input) {
+    return (await call<{ project: Project }>("POST", "/api/compose", input)).project;
+  },
+
   async getProject(id) {
     return (await call<{ project: Project }>("GET", `/api/projects/${encodeURIComponent(id)}`)).project;
   },

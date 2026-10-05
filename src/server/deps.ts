@@ -1,5 +1,6 @@
 import "server-only";
-import { stripeEnv, supabasePublicEnv } from "./env";
+import { anthropicAi } from "./ai";
+import { aiEnv, stripeEnv, supabasePublicEnv } from "./env";
 import { supabaseAuthAdmin, supabaseStorage } from "./storage";
 import { realStripe } from "./stripe";
 
@@ -12,5 +13,7 @@ export const deps = {
     const e = stripeEnv();
     return { stripe: realStripe(), appUrl: e.APP_URL, priceId: e.STRIPE_PRICE_ID };
   },
+  /** The vision model, or null when no key is set. composeProject copes with null. */
+  ai: () => (process.env.ANTHROPIC_API_KEY ? anthropicAi({ apiKey: aiEnv().ANTHROPIC_API_KEY, model: aiEnv().COMPOSE_MODEL }) : null),
   publicBase: () => supabasePublicEnv().NEXT_PUBLIC_SUPABASE_URL,
 };

@@ -112,6 +112,12 @@ export interface DataLayer {
   listProjects(): Promise<ProjectSummary[]>;
   /** POST /api/projects */
   createProject(input: { format: FormatKey; slideCount: number; title?: string }): Promise<Project>;
+  /**
+   * POST /api/compose. Turns photos already uploaded with uploadImage into a finished carousel and returns the
+   * new project. The real API asks a vision model to choose colours, captions and a style. The fake one
+   * uses plain defaults. Same seed, same layout.
+   */
+  composeProject(input: { mediaIds: string[]; format?: FormatKey; title?: string; seed?: number }): Promise<Project>;
   /** GET /api/projects/:id */
   getProject(id: string): Promise<Project>;
   /** PATCH /api/projects/:id. Throws REV_CONFLICT or LIMIT_REACHED. */
