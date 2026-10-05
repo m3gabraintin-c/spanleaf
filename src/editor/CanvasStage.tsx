@@ -9,6 +9,7 @@ import { cssFamily, fontState, loadFont, onFontsChange } from "@/lib/fonts";
 import { token, tokenPx } from "@/lib/tokens-runtime";
 import { FloatingElementMenu, IconButton } from "@/ui";
 import { sourceRect } from "@/lib/geometry";
+import { STICKERS, parseSticker, stickerDataUrl } from "@/lib/stickers";
 import { drawMaskedImage, drawPattern, elementPolygon } from "./draw";
 import { canvasRegistry, type ImageStatus } from "./registry";
 import { useEditor } from "./store";
@@ -682,19 +683,25 @@ export default function CanvasStage() {
                 {pattern ? (
                   <Shape listening={false} width={size.width} height={size.height} sceneFunc={(ctx) => drawPattern(ctx._context, pattern, size.width, size.height)} />
                 ) : null}
-                {elements.map((el) =>
-                  el.type === "image" ? (
-                    <ImageNode
-                      key={el.id}
-                      el={el}
-                      url={el.mediaId ? mediaUrls[el.mediaId]?.url : undefined}
-                      missing={!!el.mediaId && !!mediaMissing[el.mediaId]}
-                      hooks={hooks}
-                    />
-                  ) : el.type === "text" && el.text ? (
-                    <TextNode key={el.id} el={el} hooks={hooks} />
-                  ) : null,
-                )}
+                {elements.map((el) => {
+                  if (el.type === "image") {
+                    return (
+                      <ImageNode
+                        key={el.id}
+                        el={el}
+                        url={el.mediaId ? mediaUrls[el.mediaId]?.url : undefined}
+                        missing={!!el.mediaId && !!mediaMissing[el.mediaId]}
+                        hooks={hooks}
+                      />
+                    );
+                  }
+                  if (el.type === "sticker") {
+                    // Only built-in stickers we know are drawn. Anything else is skipped, not fetched.
+                    const id = parseSticker(el.assetPath);
+                    return id ? <ImageNode key={el.id} el={el} url={stickerDataUrl(id, el.tint ?? STICKERS[id].defaultTint)} missing={false} hooks={hooks} /> : null;
+                  }
+                  return el.type === "text" && el.text ? <TextNode key={el.id} el={el} hooks={hooks} /> : null;
+                })}
               </Layer>
 
               {/* Editing aids: slide dividers, snap guides and selection handles. Never exported. */}

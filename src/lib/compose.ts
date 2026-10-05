@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DocSchema, uid, type Doc, type Element } from "./doc";
 import { FORMATS, type FormatKey } from "./formats";
 import { coverCrop, seeded } from "./geometry";
+import { STICKERS, stickerAsset } from "./stickers";
 
 /**
  * Turns a set of photos into a scrapbook-style carousel document. The model only makes taste decisions
@@ -83,6 +84,27 @@ export function inkFor(background: string, preferred: string) {
   return contrast(background, "#111111") >= contrast(background, "#ffffff") ? "#111111" : "#ffffff";
 }
 
+
+// ---- decorations -----------------------------------------------------------------------------
+
+const PAPER = "#ecebe5";
+const TAPE_IDS = ["tape", "tape-stripe"];
+const TAPE_TINTS = ["#f0c987", "#e58fa8", "#8fbfe0", "#a9d18e"];
+const DOODLE_IDS = ["star", "sparkle", "heart", "drop", "squiggle", "dots"];
+// White and yellow read on almost any photo. Pastels vanish on matching ones.
+const DOODLE_TINTS = ["#ffffff", "#f6d94a"];
+const DOODLE_SHADOW = { color: "#000000", blur: 8, x: 0, y: 2, opacity: 0.45 };
+const LABEL_SHADOW = { color: "#000000", blur: 10, x: 0, y: 3, opacity: 0.18 };
+
+/**
+ * Where the top-left corner goes so that a w by h box, turned by deg about that corner, ends up centred
+ * on (cx, cy). Elements turn about their top-left corner, so this is how a tilted sticker lands where aimed.
+ */
+function placeCentred(cx: number, cy: number, w: number, h: number, deg: number) {
+  const r = (deg * Math.PI) / 180;
+  return { x: cx - (w / 2) * Math.cos(r) + (h / 2) * Math.sin(r), y: cy - (w / 2) * Math.sin(r) - (h / 2) * Math.cos(r) };
+}
+
 // ---- layout ----------------------------------------------------------------------------------
 
 interface Cell {
@@ -156,6 +178,8 @@ export interface LayoutOptions {
   /** Same seed, same carousel. A different seed shuffles tilt, torn edges and which photo goes where. */
   seed?: number;
   newId?: () => string;
+  /** Tape, doodles and a paper label for the scrapbook style. On unless set to false. */
+  decorations?: boolean;
 }
 
 /** How many slides n photos get: about three each, never more than five, never more than the plan allows. */
@@ -235,6 +259,7 @@ export function layoutCarousel(photos: LayoutPhoto[], plan: ComposePlan, opts: L
       bridge = cells.reduce((best, c, i) => (c.x + c.w > cells[best].x + cells[best].w ? i : best), 0);
     }
 
+    const firstOfSlide = elements.length;
     cells.forEach((cell, i) => {
       const photo = placed[i];
       const w = Math.round(cell.w * W);
@@ -262,23 +287,123 @@ export function layoutCarousel(photos: LayoutPhoto[], plan: ComposePlan, opts: L
       elements.push(el);
     });
 
+    const slideImgs = elements.slice(firstOfSlide);
+    const decorate = plan.style === "scrapbook" && opts.decorations !== false;
     const line = textOn.get(s);
-    if (line) {
-      const w = Math.round(W * 0.88);
-      // Big as the style likes, but small enough that the line fits across the band in one row.
-      const size = Math.min(line.isTitle ? 84 : 64, Math.max(36, Math.floor(w / (line.value.length * 0.6))));
-      const rows = Math.max(1, Math.ceil((line.value.length * size * 0.6) / w));
-      elements.push({
-        id: newId(),
-        type: "text",
-        x: Math.round(s * W + W * 0.06),
-        y: Math.round(H * (1 - BAND) + H * 0.01),
-        w,
-        h: Math.round(size * 1.25 * rows),
-        rotation: style.textTilt ? Math.round((rand() * 2 - 1) * style.textTilt * 10) / 10 : 0,
-        locked: false,
-        text: { value: line.value, font: plan.font, size, color: ink, align: style.align, bold: false },
+
+    // A sticker, kept inside the artboard. x and y are the top-left corner before it turns.
+    const sticker = (id: string, x: number, y: number, w: number, h: number, rotation: number, tint: string, extra: Partial<Element> = {}): Element => ({
+      id: newId(),
+      type: "sticker",
+      x: Math.round(Math.min(Math.max(0, x), totalW - w)),
+      y: Math.round(Math.min(Math.max(0, y), H - h)),
+      w,
+      h,
+      rotation,
+      locked: false,
+      name: STICKERS[id].label,
+      assetPath: stickerAsset(id),
+      tint,
+      ...extra,
+    });
+    const shuffled = <T,>(list: T[]) => list.map((v) => [rand(), v] as const).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+
+    if (decorate) {
+      // Tape goes across a top edge and over a top-left corner. Doodles go on the bottom corners. Photos
+      // overlap in this style, so every spot is checked against what is already stuck down, and a
+      // decoration with nowhere clear to go is left out rather than piled on top of another.
+      const order = shuffled(slideImgs);
+      const stuck: [number, number][] = [];
+      const clear = (cx: number, cy: number) => stuck.every(([x, y]) => Math.hypot(x - cx, y - cy) > 90);
+
+      for (let k = 0; k < Math.min(2, order.length); k++) {
+        const id = TAPE_IDS[Math.floor(rand() * TAPE_IDS.length)];
+        const w = Math.round(W * 0.17);
+        const h = Math.round(w / STICKERS[id].aspect);
+        const deg = k === 0 ? Math.round((rand() * 2 - 1) * 12 * 10) / 10 : -40 + Math.round((rand() * 2 - 1) * 8 * 10) / 10;
+        const along = 0.3 + rand() * 0.4;
+        const tint = TAPE_TINTS[Math.floor(rand() * TAPE_TINTS.length)];
+        for (let a = 0; a < order.length; a++) {
+          const ph = order[(k + a) % order.length];
+          const cx = k === 0 ? ph.x + ph.w * along : ph.x + 14;
+          const cy = k === 0 ? ph.y + 4 : ph.y + 14;
+          if (!clear(cx, cy)) continue;
+          const at = placeCentred(cx, cy, w, h, deg);
+          elements.push(sticker(id, at.x, at.y, w, h, deg, tint));
+          stuck.push([cx, cy]);
+          break;
+        }
+      }
+
+      // Two doodles, kept above the caption label.
+      const limit = (line ? H * (1 - BAND) : H) - 8;
+      shuffled(DOODLE_IDS).slice(0, 2).forEach((id, k) => {
+        const base = Math.round(W * (0.11 + rand() * 0.05));
+        const w = STICKERS[id].aspect >= 1 ? Math.round(base * Math.min(STICKERS[id].aspect, 1.6)) : Math.round(base * STICKERS[id].aspect);
+        const h = Math.round(w / STICKERS[id].aspect);
+        const deg = Math.round((rand() * 2 - 1) * 20 * 10) / 10;
+        const tint = id === "star" ? "#f6d94a" : id === "drop" ? (rand() < 0.5 ? "#ffffff" : "#8fbfe0") : DOODLE_TINTS[Math.floor(rand() * DOODLE_TINTS.length)];
+        const startRight = k === 0 ? true : rand() < 0.5;
+        spot: for (let a = 0; a < order.length; a++) {
+          const ph = order[(k + 2 + a) % order.length];
+          for (const right of [startRight, !startRight]) {
+            const cx = (right ? ph.x + ph.w : ph.x) + (right ? -1 : 1) * w * 0.6;
+            const cy = Math.min(ph.y + ph.h - h * 0.6, limit - h / 2);
+            if (!clear(cx, cy)) continue;
+            const at = placeCentred(cx, cy, w, h, deg);
+            elements.push(sticker(id, at.x, at.y, w, h, deg, tint, { shadow: { ...DOODLE_SHADOW } }));
+            stuck.push([cx, cy]);
+            break spot;
+          }
+        }
       });
+    }
+
+    if (line) {
+      if (decorate) {
+        // The caption sits on a torn paper label, stuck across the edge of the photos above it.
+        const base = line.isTitle ? 84 : 64;
+        const len = line.value.length;
+        const labelW = Math.round(Math.min(W * 0.9, Math.max(W * 0.45, len * base * 0.6 + 110)));
+        const labelH = Math.round(labelW / STICKERS.label.aspect);
+        const textW = Math.round(labelW * 0.84);
+        const size = Math.min(base, Math.max(30, Math.floor(textW / (len * 0.6))));
+        const textH = Math.round(size * 1.25 * Math.max(1, Math.ceil((len * size * 0.6) / textW)));
+        const deg = Math.round((rand() * 2 - 1) * 25) / 10;
+        const cx = s * W + W * (0.5 + (rand() * 2 - 1) * 0.06);
+        // Low in the slide, but never so low that the artboard edge pushes the label off the text's middle.
+        const cy = Math.min(H * (1 - BAND / 2), H - labelH / 2 - 4);
+        const lp = placeCentred(cx, cy, labelW, labelH, deg);
+        elements.push(sticker("label", lp.x, lp.y, labelW, labelH, deg, PAPER, { shadow: { ...LABEL_SHADOW } }));
+        const tp = placeCentred(cx, cy, textW, textH, deg);
+        elements.push({
+          id: newId(),
+          type: "text",
+          x: Math.round(tp.x),
+          y: Math.round(tp.y),
+          w: textW,
+          h: textH,
+          rotation: deg,
+          locked: false,
+          text: { value: line.value, font: plan.font, size, color: inkFor(PAPER, plan.ink), align: "center", bold: false },
+        });
+      } else {
+        const w = Math.round(W * 0.88);
+        // Big as the style likes, but small enough that the line fits across the band in one row.
+        const size = Math.min(line.isTitle ? 84 : 64, Math.max(36, Math.floor(w / (line.value.length * 0.6))));
+        const rows = Math.max(1, Math.ceil((line.value.length * size * 0.6) / w));
+        elements.push({
+          id: newId(),
+          type: "text",
+          x: Math.round(s * W + W * 0.06),
+          y: Math.round(H * (1 - BAND) + H * 0.01),
+          w,
+          h: Math.round(size * 1.25 * rows),
+          rotation: style.textTilt ? Math.round((rand() * 2 - 1) * style.textTilt * 10) / 10 : 0,
+          locked: false,
+          text: { value: line.value, font: plan.font, size, color: ink, align: style.align, bold: false },
+        });
+      }
     }
   });
 

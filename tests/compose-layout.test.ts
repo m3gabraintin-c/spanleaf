@@ -4,6 +4,7 @@ import { cleanText, ComposePlanSchema, contrast, FALLBACK_PLAN, inkFor, layoutCa
 import { DocSchema, type Element } from "@/lib/doc";
 import { FORMATS } from "@/lib/formats";
 import { composeInput } from "@/server/schemas";
+import { parseSticker, STICKERS } from "@/lib/stickers";
 
 const W = FORMATS.portrait_4_5.width;
 const H = FORMATS.portrait_4_5.height;
@@ -155,16 +156,18 @@ describe("layoutCarousel", () => {
     assert.deepEqual(doc.elements.filter((e) => e.type === "text").map((e) => e.text!.value), ["t"]);
   });
 
-  it("text is always readable on the background, whatever colour the model picked", () => {
+  it("text is always readable: on the paper label in scrapbook, on the background otherwise", () => {
     for (const [background, ink] of [["#ffffff", "#ffffff"], ["#111111", "#222222"], ["#f4f1ea", "#2b2b2b"], ["#336699", "#3a6a9c"]]) {
-      const t = run(photos(3), plan({ background, ink, captions: ["hi"] })).doc.elements.find((e) => e.type === "text")!;
-      assert.ok(contrast(background, t.text!.color) >= 3, `${background} ${ink}`);
+      const ed = run(photos(3), plan({ style: "editorial", background, ink, captions: ["hi"] })).doc.elements.find((e) => e.type === "text")!;
+      assert.ok(contrast(background, ed.text!.color) >= 3, `editorial ${background} ${ink}`);
+      const sc = run(photos(3), plan({ style: "scrapbook", background, ink, captions: ["hi"] })).doc.elements.find((e) => e.type === "text")!;
+      assert.ok(contrast("#ecebe5", sc.text!.color) >= 3, `scrapbook ${background} ${ink}`);
     }
   });
 
   it("long titles shrink to fit one row instead of running off the slide", () => {
     const t = run(photos(3), plan({ title: "x".repeat(40) })).doc.elements.find((e) => e.type === "text")!;
-    assert.ok(t.text!.size >= 36 && t.text!.size < 84);
+    assert.ok(t.text!.size >= 30 && t.text!.size < 84);
     assert.ok(t.h <= 0.11 * H + 40);
   });
 
@@ -213,5 +216,97 @@ describe("the compose request", () => {
     for (const bad of [{ mediaIds: [] }, { mediaIds: Array.from({ length: 31 }, (_, i) => id(i)) }, { mediaIds: ["nope"] }, { mediaIds: [id(1)], format: "a4" }, { mediaIds: [id(1)], seed: -1 }, { mediaIds: [id(1)], seed: 1.5 }, {}]) {
       assert.ok(!composeInput.safeParse(bad).success, JSON.stringify(bad));
     }
+  });
+});
+
+describe("decorations", () => {
+  const stickers = (els: Element[]) => els.filter((e) => e.type === "sticker");
+  const kind = (e: Element) => parseSticker(e.assetPath)!;
+  /** Elements turn about their top-left corner, so the middle of a turned one isn't the middle of its box. */
+  const visualCentre = (e: Element): [number, number] => {
+    const r = (e.rotation * Math.PI) / 180;
+    return [e.x + (e.w / 2) * Math.cos(r) - (e.h / 2) * Math.sin(r), e.y + (e.w / 2) * Math.sin(r) + (e.h / 2) * Math.cos(r)];
+  };
+  const doodle = (e: Element) => !["tape", "tape-stripe", "label"].includes(kind(e));
+
+  it("scrapbook gets tape and doodles on every slide, all built-in, all coloured", () => {
+    const { doc, slideCount } = run(photos(9), plan({ style: "scrapbook" }));
+    for (let s = 0; s < slideCount; s++) {
+      const here = stickers(doc.elements).filter((e) => slideOf(e) === s);
+      assert.ok(here.some((e) => kind(e).startsWith("tape")), `slide ${s} has tape`);
+      assert.ok(here.filter(doodle).length >= 1, `slide ${s} has a doodle`);
+      assert.ok(here.length <= 6);
+    }
+    for (const e of stickers(doc.elements)) {
+      assert.ok(parseSticker(e.assetPath), String(e.assetPath));
+      assert.match(e.tint ?? "", /^#[0-9a-f]{6}$/i);
+      assert.equal(e.name, STICKERS[kind(e)].label);
+      assert.equal(Math.round((e.w / e.h) * 10) / 10, Math.round(STICKERS[kind(e)].aspect * 10) / 10, "keeps its shape");
+    }
+  });
+
+  it("editorial and clean stay free of decorations", () => {
+    for (const style of ["editorial", "clean"] as const) assert.equal(stickers(run(photos(9), plan({ style, title: "t" })).doc.elements).length, 0);
+  });
+
+  it("can be switched off", () => {
+    assert.equal(stickers(run(photos(9), plan(), { decorations: false }).doc.elements).length, 0);
+    const t = run(photos(3), plan({ title: "hello" }), { decorations: false }).doc.elements.find((e) => e.type === "text")!;
+    assert.ok(t.text!.color && !stickers(run(photos(3), plan({ title: "hello" }), { decorations: false }).doc.elements).length);
+  });
+
+  it("puts each caption on one paper label, with the text in the middle of it", () => {
+    const { doc, slideCount } = run(photos(9), plan({ title: "summer", captions: ["slow mornings", "good light"] }));
+    const texts = doc.elements.filter((e) => e.type === "text");
+    assert.equal(texts.length, 3);
+    for (const t of texts) {
+      const labels = stickers(doc.elements).filter((e) => kind(e) === "label" && slideOf(e) === slideOf(t));
+      assert.equal(labels.length, 1);
+      const [l] = labels;
+      const [lx, ly] = visualCentre(l);
+      const [tx, ty] = visualCentre(t);
+      assert.ok(Math.hypot(lx - tx, ly - ty) < 8, "text is in the middle of its label");
+      assert.ok(t.w < l.w && t.h < l.h);
+      assert.equal(t.rotation, l.rotation);
+    }
+    assert.ok(slideCount >= 3);
+  });
+
+  it("keeps doodles above the caption label", () => {
+    const { doc } = run(photos(9), plan({ captions: ["a", "b", "c"], title: "t" }));
+    const withText = new Set(doc.elements.filter((e) => e.type === "text").map(slideOf));
+    for (const e of stickers(doc.elements).filter(doodle)) {
+      if (withText.has(slideOf(e))) assert.ok(e.y + e.h <= H * 0.9, `${kind(e)} sits over the label`);
+    }
+  });
+
+  it("tape is stuck to a photo", () => {
+    const { doc } = run(photos(9));
+    for (const t of stickers(doc.elements).filter((e) => kind(e).startsWith("tape"))) {
+      const cx = t.x + t.w / 2;
+      const cy = t.y + t.h / 2;
+      const near = images(doc.elements).some((p) => cx > p.x - t.w && cx < p.x + p.w + t.w && cy > p.y - t.w && cy < p.y + p.h + t.w);
+      assert.ok(near);
+    }
+  });
+
+  it("doesn't pile decorations into one spot on a slide", () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const { doc, slideCount } = run(photos(9), plan(), { seed });
+      for (let s = 0; s < slideCount; s++) {
+        const here = stickers(doc.elements).filter((e) => slideOf(e) === s && kind(e) !== "label");
+        for (const a of here) for (const b of here) {
+          if (a === b) continue;
+          const [ax, ay] = visualCentre(a);
+          const [bx, by] = visualCentre(b);
+          const apart = Math.hypot(ax - bx, ay - by);
+          assert.ok(apart > 70, `seed ${seed} slide ${s}: ${kind(a)} and ${kind(b)} sit ${Math.round(apart)}px apart`);
+        }
+      }
+    }
+  });
+
+  it("is the same for the same seed", () => {
+    assert.deepEqual(run(photos(9), plan(), { seed: 4 }), run(photos(9), plan(), { seed: 4 }));
   });
 });

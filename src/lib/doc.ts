@@ -73,7 +73,10 @@ export const ElementSchema = z.object({
   locked: z.boolean().default(false),
   name: z.string().max(200).optional(),
   mediaId: z.string().optional(),
-  assetPath: z.string().optional(),
+  /** For a sticker: "builtin:<id>" from stickers.ts. */
+  assetPath: z.string().max(200).optional(),
+  /** A sticker's colour. */
+  tint: hex.optional(),
   text: TextSchema.optional(),
   /** Photo styling. All optional, so documents saved before these existed load unchanged. */
   crop: CropSchema.optional(),
