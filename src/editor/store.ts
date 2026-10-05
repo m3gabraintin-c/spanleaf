@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { current } from "immer";
 import { immer } from "zustand/middleware/immer";
-import { uid, type Doc, type Element } from "@/lib/doc";
+import { uid, type Doc, type Element, type Pattern } from "@/lib/doc";
 import type { FormatKey } from "@/lib/formats";
 import type { MediaUrls, Project } from "@/data";
 
@@ -49,6 +49,8 @@ interface EditorState {
   reorderLayer: (id: string, toIndex: number) => void;
   toggleLock: (id: string) => void;
   setBackground: (color: string) => void;
+  /** Pass null to remove the pattern. */
+  setPattern: (pattern: Pattern | null) => void;
   undo: () => void;
   redo: () => void;
   select: (id: string | null) => void;
@@ -238,6 +240,15 @@ export const useEditor = create<EditorState>()(
         if (s.doc.background.value.toLowerCase() === color.toLowerCase()) return;
         remember(s, "background");
         s.doc.background.value = color;
+        touch(s);
+      }),
+
+    setPattern: (pattern) =>
+      set((s) => {
+        if (JSON.stringify(s.doc.pattern ?? null) === JSON.stringify(pattern)) return;
+        remember(s, "pattern");
+        if (pattern) s.doc.pattern = pattern;
+        else delete s.doc.pattern;
         touch(s);
       }),
 

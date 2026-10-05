@@ -16,6 +16,50 @@ export const TextSchema = z.object({
   bold: z.boolean(),
 });
 
+const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+/**
+ * The part of the photo that shows, as fractions of the original (0 to 1). Missing means the whole
+ * photo, stretched to the element's w and h as before. Aspect ratio is the layout's job: pick a crop
+ * whose shape matches w by h, or the photo is squashed. See coverCrop in geometry.ts.
+ */
+export const CropSchema = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    w: z.number().min(0.01).max(1),
+    h: z.number().min(0.01).max(1),
+  })
+  .refine((c) => c.x + c.w <= 1.0001 && c.y + c.h <= 1.0001, "The crop runs past the edge of the photo.");
+
+/** The outline a photo is cut to. Torn edges are generated from the seed, so a reload draws the same edge. */
+export const MaskSchema = z.object({
+  shape: z.enum(["rect", "rounded", "ellipse", "torn"]),
+  /** Corner radius for "rounded", as a fraction of the shorter side (0 to 0.5). Default 0.12. */
+  radius: z.number().min(0).max(0.5).optional(),
+  seed: z.number().int().min(0).max(1_000_000).optional(),
+});
+
+/** A solid border that follows the mask. Canvas pixels. */
+export const OutlineSchema = z.object({ color: hex, width: z.number().min(0).max(80) });
+
+export const ShadowSchema = z.object({
+  color: hex,
+  blur: z.number().min(0).max(100),
+  x: z.number().min(-200).max(200),
+  y: z.number().min(-200).max(200),
+  opacity: z.number().min(0).max(1),
+});
+
+/** A repeating pattern drawn over the background colour, under every element. */
+export const PatternSchema = z.object({
+  kind: z.enum(["grid", "dots", "lines"]),
+  color: hex,
+  /** Distance between lines or dots, in canvas pixels. */
+  size: z.number().min(8).max(400),
+  thickness: z.number().min(0.5).max(8),
+});
+
 export const ElementSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["image", "video", "text", "sticker", "frame", "drawing"]),
@@ -31,14 +75,26 @@ export const ElementSchema = z.object({
   mediaId: z.string().optional(),
   assetPath: z.string().optional(),
   text: TextSchema.optional(),
+  /** Photo styling. All optional, so documents saved before these existed load unchanged. */
+  crop: CropSchema.optional(),
+  mask: MaskSchema.optional(),
+  outline: OutlineSchema.optional(),
+  shadow: ShadowSchema.optional(),
+  opacity: z.number().min(0).max(1).optional(),
 });
 
 export const DocSchema = z.object({
   v: z.literal(1),
   background: z.object({ type: z.literal("color"), value: z.string() }),
+  pattern: PatternSchema.optional(),
   elements: z.array(ElementSchema).max(500),
 });
 
+export type Crop = z.infer<typeof CropSchema>;
+export type Mask = z.infer<typeof MaskSchema>;
+export type Outline = z.infer<typeof OutlineSchema>;
+export type Shadow = z.infer<typeof ShadowSchema>;
+export type Pattern = z.infer<typeof PatternSchema>;
 export type Element = z.infer<typeof ElementSchema>;
 export type TextProps = z.infer<typeof TextSchema>;
 export type Doc = z.infer<typeof DocSchema>;

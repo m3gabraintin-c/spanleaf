@@ -1,13 +1,15 @@
 "use client";
 import Konva from "konva";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
-import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import { Image as KImage, Layer, Line, Rect, Shape, Stage, Text, Transformer } from "react-konva";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import { FORMATS, SLIDE_WIDTH, canvasSize, slideIndexAt } from "@/lib/formats";
 import { layerName, type Element } from "@/lib/doc";
 import { cssFamily, fontState, loadFont, onFontsChange } from "@/lib/fonts";
 import { token, tokenPx } from "@/lib/tokens-runtime";
 import { FloatingElementMenu, IconButton } from "@/ui";
+import { sourceRect } from "@/lib/geometry";
+import { drawMaskedImage, drawPattern, elementPolygon } from "./draw";
 import { canvasRegistry, type ImageStatus } from "./registry";
 import { useEditor } from "./store";
 
@@ -179,7 +181,45 @@ function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; mis
       </>
     );
   }
-  return <KImage {...common} image={img ?? undefined} />;
+  const opacity = el.opacity ?? 1;
+
+  // A cut shape or a border needs our own drawing. Everything else stays a plain Konva image,
+  // which is what the editor tests look for.
+  if (el.mask || el.outline) {
+    return (
+      <Shape
+        {...common}
+        opacity={opacity}
+        sceneFunc={(ctx) => {
+          if (img) drawMaskedImage(ctx._context, img, el);
+        }}
+        hitFunc={(ctx, shape) => {
+          const p = elementPolygon(el);
+          ctx.beginPath();
+          ctx.moveTo(p[0], p[1]);
+          for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+          ctx.closePath();
+          ctx.fillStrokeShape(shape);
+        }}
+      />
+    );
+  }
+
+  const src = img && el.crop ? sourceRect(el.crop, img.naturalWidth, img.naturalHeight) : null;
+  return (
+    <KImage
+      {...common}
+      image={img ?? undefined}
+      opacity={opacity}
+      crop={src ? { x: src.sx, y: src.sy, width: src.sw, height: src.sh } : undefined}
+      shadowEnabled={!!el.shadow}
+      shadowColor={el.shadow?.color}
+      shadowBlur={el.shadow?.blur}
+      shadowOffsetX={el.shadow?.x}
+      shadowOffsetY={el.shadow?.y}
+      shadowOpacity={el.shadow?.opacity}
+    />
+  );
 }
 
 function TextNode({ el, hooks }: { el: Element; hooks: NodeHooks }) {
@@ -249,6 +289,7 @@ export default function CanvasStage() {
   const slideCount = useEditor((s) => s.slideCount);
   const elements = useEditor((s) => s.doc.elements);
   const background = useEditor((s) => s.doc.background.value);
+  const pattern = useEditor((s) => s.doc.pattern);
   const selectedId = useEditor((s) => s.selectedId);
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
@@ -638,6 +679,9 @@ export default function CanvasStage() {
               {/* Content: this layer, and only this layer, is what gets exported. */}
               <Layer ref={contentRef}>
                 <Rect width={size.width} height={size.height} fill={background} listening={false} />
+                {pattern ? (
+                  <Shape listening={false} width={size.width} height={size.height} sceneFunc={(ctx) => drawPattern(ctx._context, pattern, size.width, size.height)} />
+                ) : null}
                 {elements.map((el) =>
                   el.type === "image" ? (
                     <ImageNode
