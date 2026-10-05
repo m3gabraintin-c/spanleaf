@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - name: Get the cut-out model, so its test runs
+        run: npm run models
       - name: Backend tests (database, access rules, billing, jobs)
         run: npm test
       - name: Build in demo mode (the browser tests run against this)

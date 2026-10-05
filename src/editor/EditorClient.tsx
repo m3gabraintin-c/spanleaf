@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Crop, Loader2, Palette, Pencil, PaintBucket, Ratio, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
+import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Crop, Loader2, Palette, Pencil, PaintBucket, Ratio, Scissors, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
 import { data, DataError, type MediaRecord } from "@/data";
 import { FORMATS, SLIDE_WIDTH, ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
 import { uploadMany, type BatchProgress } from "@/lib/upload";
@@ -28,6 +28,7 @@ import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
 import { AdjustPanel } from "./panels/AdjustPanel";
 import { CropPanel } from "./panels/CropPanel";
+import { CutoutPanel } from "./panels/CutoutPanel";
 import { DrawPanel } from "./panels/DrawPanel";
 import { FramesPanel } from "./panels/FramesPanel";
 import { SizePanel } from "./panels/SizePanel";
@@ -53,6 +54,7 @@ const TOOLS: (ToolItem & { key: ToolKey })[] = [
   { key: "stickers", label: "Stickers", icon: Sticker },
   { key: "frames", label: "Frames", icon: Frame },
   { key: "draw", label: "Draw", icon: Pencil },
+  { key: "cutout", label: "Cut out", icon: Scissors },
   { key: "background", label: "Colour", icon: PaintBucket },
   { key: "adjust", label: "Adjust", icon: SlidersHorizontal },
 ];
@@ -263,6 +265,7 @@ function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "stickers") return <StickersPanel />;
   if (tool === "frames") return <FramesPanel />;
   if (tool === "draw") return <DrawPanel />;
+  if (tool === "cutout") return <CutoutPanel />;
   if (tool === "adjust") return <AdjustPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;
