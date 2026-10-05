@@ -6,7 +6,8 @@ import { data, DataError, type MediaRecord } from "@/data";
 import { ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
 import { uploadMany, type BatchProgress } from "@/lib/upload";
 import { AppShell, useRequireUser } from "@/components/AppChrome";
-import { Button, IconButton, ProgressBar } from "@/ui";
+import type { ThemeId } from "@/lib/themes";
+import { Button, IconButton, ProgressBar, ThemePicker } from "@/ui";
 
 interface Added {
   media: MediaRecord;
@@ -24,6 +25,7 @@ export default function FromPhotosPage() {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [composing, setComposing] = useState(false);
   const [notes, setNotes] = useState<string[]>([]);
+  const [theme, setTheme] = useState<ThemeId | "auto">("auto");
 
   if (!me) return <div className="min-h-dvh" aria-busy="true" />;
 
@@ -68,7 +70,7 @@ export default function FromPhotosPage() {
     setNotes([]);
     setComposing(true);
     try {
-      const project = await data.composeProject({ mediaIds: photos.map((p) => p.media.id) });
+      const project = await data.composeProject({ mediaIds: photos.map((p) => p.media.id), theme: theme === "auto" ? undefined : theme });
       router.push(`/app/project/${project.id}`);
     } catch (e) {
       setNotes([messageOf(e, "Couldn't make the carousel. Try again.")]);
@@ -137,6 +139,11 @@ export default function FromPhotosPage() {
             ))}
           </ul>
         ) : null}
+
+        <div className="mt-8 flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-ink">Theme</h2>
+          <ThemePicker label="Theme" auto value={theme} onValueChange={setTheme} disabled={composing} />
+        </div>
 
         <div className="mt-8">
           <Button loading={composing} disabled={photos.length === 0 || uploading} onClick={() => void make()}>

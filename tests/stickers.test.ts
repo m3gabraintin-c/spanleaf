@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DocSchema } from "@/lib/doc";
-import { parseSticker, stickerAsset, stickerDataUrl, STICKER_IDS, STICKERS } from "@/lib/stickers";
+import { DOODLE_IDS, parseSticker, stickerAsset, stickerDataUrl, STICKERS, TAPE_IDS } from "@/lib/stickers";
+
+const STICKER_IDS = Object.keys(STICKERS);
 
 const decode = (url: string) => decodeURIComponent(url.replace("data:image/svg+xml;charset=utf-8,", ""));
 
@@ -15,6 +17,13 @@ describe("built-in stickers", () => {
       const [, w, h] = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)!;
       assert.ok(Math.abs(Number(w) / Number(h) - STICKERS[id].aspect) < 0.01, `${id} aspect`);
     }
+  });
+
+  it("every sticker is tape, a label or a doodle, and the id lists agree with that", () => {
+    assert.deepEqual([...TAPE_IDS].sort(), STICKER_IDS.filter((id) => STICKERS[id].kind === "tape").sort());
+    assert.deepEqual([...DOODLE_IDS].sort(), STICKER_IDS.filter((id) => STICKERS[id].kind === "doodle").sort());
+    assert.deepEqual(STICKER_IDS.filter((id) => STICKERS[id].kind === "label"), ["label"]);
+    assert.equal(TAPE_IDS.length + DOODLE_IDS.length + 1, STICKER_IDS.length);
   });
 
   it("none can run script or reach out to another address", () => {

@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { current } from "immer";
 import { immer } from "zustand/middleware/immer";
+import { inkFor } from "@/lib/colour";
 import { uid, type Doc, type Element, type Pattern } from "@/lib/doc";
+import { makePattern } from "@/lib/pattern";
 import type { FormatKey } from "@/lib/formats";
 import type { MediaUrls, Project } from "@/data";
 
@@ -250,6 +252,8 @@ export const useEditor = create<EditorState>()(
         if (s.doc.background.value.toLowerCase() === color.toLowerCase()) return;
         remember(s, "background");
         s.doc.background.value = color;
+        // A pattern is drawn against the background, so it follows the colour.
+        if (s.doc.pattern) s.doc.pattern = makePattern(s.doc.pattern.kind, color, inkFor(color, "#1a1a1a"));
         touch(s);
       }),
 

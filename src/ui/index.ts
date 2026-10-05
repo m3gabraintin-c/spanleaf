@@ -16,3 +16,4 @@ export * from "./TemplateCard";
 export * from "./LayerRow";
 export * from "./FloatingElementMenu";
 export * from "./EditorChrome";
+export * from "./ThemePicker";

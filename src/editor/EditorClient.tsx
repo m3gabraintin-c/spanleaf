@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Loader2, Pencil, PaintBucket, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
+import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Loader2, Palette, Pencil, PaintBucket, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
 import { data, DataError, type MediaRecord } from "@/data";
 import { FORMATS, SLIDE_WIDTH, ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
 import { uploadMany, type BatchProgress } from "@/lib/upload";
@@ -26,6 +26,7 @@ import { canvasRegistry } from "./registry";
 import { BackgroundPanel } from "./panels/BackgroundPanel";
 import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
+import { ThemesPanel } from "./panels/ThemesPanel";
 import { useEditor, type ToolKey } from "./store";
 import { useAutosave } from "./useAutosave";
 import { useExport } from "./useExport";
@@ -38,6 +39,7 @@ const CanvasStage = dynamic(() => import("./CanvasStage"), {
 
 const TOOLS: (ToolItem & { key: ToolKey })[] = [
   { key: "media", label: "Media", icon: ImagePlus },
+  { key: "themes", label: "Themes", icon: Palette },
   { key: "text", label: "Text", icon: Type },
   { key: "layers", label: "Layers", icon: Layers },
   { key: "stickers", label: "Stickers", icon: Sticker },
@@ -246,6 +248,7 @@ function MediaPanel() {
 
 function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "media") return <MediaPanel />;
+  if (tool === "themes") return <ThemesPanel />;
   if (tool === "text") return <TextPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;

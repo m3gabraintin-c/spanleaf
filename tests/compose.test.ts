@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { FALLBACK_PLAN, type ModelOutput } from "@/lib/compose";
+import { FALLBACK_PLAN, type ModelOutput } from "@/lib/plan";
+import { restyleDoc } from "@/lib/restyle";
+import { customise, resolveTheme, THEMES } from "@/lib/themes";
+import { getProject, patchProject } from "@/server/projects";
 import type { ComposeAi } from "@/server/ai";
 import { composeProject } from "@/server/compose";
 import { completeUpload, createUploadUrl, MEDIA_BUCKET } from "@/server/media";
@@ -22,7 +25,7 @@ class FakeAi implements ComposeAi {
     if (this.fail) throw new Error("model down");
     return {
       photos: images.map(() => tag),
-      plan: { style: "scrapbook", background: MODEL_BACKGROUND, pattern: "grid", ink: "#2b2b2b", font: "caveat", title: "hello", captions: [] },
+      plan: { theme: "scrapbook", background: MODEL_BACKGROUND, pattern: "grid", ink: "#2b2b2b", font: "caveat", title: "hello", captions: [] },
     };
   }
 }
@@ -150,5 +153,56 @@ describe("composeProject", () => {
     assert.equal(p.format, "square");
     assert.equal(p.title, "Lisbon");
     for (const e of p.doc.elements) assert.ok(e.x >= 0 && e.x + e.w <= 1080 * p.slideCount);
+  });
+
+  it("uses the theme the person chose, even when the model picked another", async () => {
+    fresh();
+    const p = await composeProject(deps(), alice, { mediaIds: await many(alice, 4), theme: "film", seed: 1 });
+    assert.equal(p.doc.background.value, THEMES.film.palette.background, "film keeps its own dark background, not the model's");
+    assert.ok(p.doc.elements.filter((e) => e.type === "image").every((e) => e.outline?.width === 4));
+    assert.equal(p.doc.compose?.theme, "film");
+    assert.equal(p.doc.elements.filter((e) => e.type === "sticker").length, 0);
+  });
+
+  it("without a chosen theme it saves the one the model picked", async () => {
+    fresh();
+    const p = await composeProject(deps(), alice, { mediaIds: await many(alice, 3), seed: 1 });
+    assert.equal(p.doc.compose?.theme, "scrapbook");
+  });
+
+  it("saves a custom theme with the project and reads it back whole", async () => {
+    fresh();
+    const base = resolveTheme("clean");
+    const custom = customise(base, { tilt: 5, edges: "oval", decorations: "lots" }, { background: base.palette.background, ink: base.palette.ink, pattern: base.palette.pattern, font: base.font });
+    const p = await composeProject(deps(), alice, { mediaIds: await many(alice, 4), theme: custom, seed: 2 });
+    assert.deepEqual(p.doc.compose?.theme, custom);
+    const [row] = await t.sql`select doc from projects where id = ${p.id}`;
+    assert.deepEqual(row.doc.compose.theme, custom);
+  });
+
+  it("saves what it needs to restyle: the plan, the model's notes on each photo, the order and the seed", async () => {
+    fresh();
+    const ids = await many(alice, 5);
+    const p = await composeProject(deps(), alice, { mediaIds: ids, seed: 77 });
+    assert.deepEqual(p.doc.compose?.order, ids);
+    assert.deepEqual(Object.keys(p.doc.compose!.tags).sort(), [...ids].sort());
+    assert.equal(p.doc.compose?.seed, 77);
+    assert.equal(p.doc.compose?.plan.title, "hello");
+  });
+
+  it("a saved project can be restyled in another theme, saved, and loaded again", async () => {
+    fresh();
+    const ids = await many(alice, 7);
+    const p = await composeProject(deps(), alice, { mediaIds: ids, seed: 3 });
+    const next = restyleDoc(p.doc, { format: p.format, slideCount: p.slideCount, theme: "editorial", seed: 4 })!;
+    const saved = await patchProject(t.db, alice, p.id, { rev: p.rev, doc: next });
+    const back = await getProject(t.db, alice, p.id);
+    assert.equal(back.rev, saved.rev);
+    assert.equal(back.slideCount, p.slideCount);
+    assert.equal(back.doc.compose?.theme, "editorial");
+    assert.deepEqual(back.doc.elements.filter((e) => e.type === "image").map((e) => e.mediaId).sort(), [...ids].sort());
+    const [row] = await t.sql`select media_ids from projects where id = ${p.id}`;
+    assert.deepEqual([...row.media_ids].sort(), [...ids].sort());
+    assert.equal(back.doc.elements.filter((e) => e.type === "sticker").length, 0, "editorial has no stickers");
   });
 });

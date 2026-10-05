@@ -85,6 +85,9 @@ describe("mask shapes", () => {
     assert.notDeepEqual(a, maskPolygon("torn", 400, 500, { seed: 6 }));
     assert.deepEqual(a.slice(0, 2), [0, 0]);
   });
+  it("a torn edge with no seed given is the same as seed 1", () => {
+    assert.deepEqual(maskPolygon("torn", 300, 400), maskPolygon("torn", 300, 400, { seed: 1 }));
+  });
   it("rounded with radius 0 is a plain rectangle", () => {
     assert.deepEqual(maskPolygon("rounded", 300, 200, { radius: 0 }), [0, 0, 300, 0, 300, 200, 0, 200]);
   });
@@ -131,6 +134,20 @@ describe("editor store: pattern", () => {
     assert.deepEqual(S().doc.pattern, p);
     S().setPattern(null);
     assert.ok(!("pattern" in S().doc));
+  });
+  it("changing the background re-tints the pattern with it, as one undo step", () => {
+    S().setPattern({ kind: "dots", color: "#aaaaaa", size: 99, thickness: 3 });
+    S().setBackground("#101010");
+    assert.equal(S().doc.pattern?.kind, "dots");
+    assert.notEqual(S().doc.pattern?.color, "#aaaaaa");
+    assert.equal(S().doc.pattern?.size, 40, "back to the dots' usual spacing");
+    S().undo();
+    assert.equal(S().doc.background.value, "#ffffff");
+    assert.equal(S().doc.pattern?.color, "#aaaaaa");
+  });
+  it("with no pattern, changing the background adds none", () => {
+    S().setBackground("#101010");
+    assert.equal(S().doc.pattern, undefined);
   });
   it("setting the same pattern again is not an undo step", () => {
     S().setPattern(p);
@@ -187,6 +204,27 @@ describe("drawing", () => {
     assert.equal(props.shadowOffsetY, 9);
     assert.equal(props.shadowColor, "transparent");
   });
+  it("a shadow with no border fills the shape in black first, and a border 0 wide is no border at all", () => {
+    const only = recorder();
+    drawMaskedImage(only.ctx, img, { ...base, shadow: { color: "#000000", blur: 20, x: 3, y: 9, opacity: 0.5 } } as Element);
+    assert.equal(only.props.fillStyle, "#000000");
+    assert.ok(!names(only.calls).includes("stroke"));
+    assert.equal(only.props.shadowBlur, 20);
+    const zero = recorder();
+    drawMaskedImage(zero.ctx, img, { ...base, outline: { color: "#ff0000", width: 0 } } as Element);
+    assert.ok(!names(zero.calls).includes("stroke") && !names(zero.calls).includes("fill"), "no halo is drawn for a border of 0");
+    const plain = recorder();
+    drawMaskedImage(plain.ctx, img, base as Element);
+    assert.ok(!names(plain.calls).includes("fill") && names(plain.calls).includes("drawImage"));
+  });
+
+  it("ruled lines are drawn across only, with no vertical ones", () => {
+    const r = recorder();
+    drawPattern(r.ctx, { kind: "lines", color: "#cccccc", size: 100, thickness: 2 }, 300, 200);
+    assert.equal(names(r.calls).filter((x) => x === "moveTo").length, 3, "y = 0, 100, 200");
+    assert.ok(r.calls.filter((c) => c[0] === "moveTo").every((c) => c[1] === 0));
+  });
+
   it("a grid draws a line per step across the artboard, and dots draw one dot per cell", () => {
     const g = recorder();
     drawPattern(g.ctx, { kind: "grid", color: "#cccccc", size: 100, thickness: 2 }, 300, 200);

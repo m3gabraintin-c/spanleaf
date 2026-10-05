@@ -43,12 +43,18 @@ DATABASE_URL=<development database only> npm run db:seed          # fake templat
 
 `/app/photos` takes up to 30 photos, uploads them three at a time, and makes a finished carousel from them. The arrangement is split in two on purpose:
 
-- A vision model (`src/server/ai.ts`) looks at small thumbnails and decides only what needs taste: each photo's focus point and best shot, plus a style, background colour, pattern, caption font, title and captions.
+- A vision model (`src/server/ai.ts`) looks at small thumbnails and decides only what needs taste: each photo's focus point and best shot, a theme, a background colour, pattern and caption font, and a title and captions.
 - A plain function (`src/lib/compose.ts`, `layoutCarousel`) does all the geometry: slide count, positions, crops, tilt, torn edges, and the photo that runs across each slide edge. Same seed gives the same result, and its output goes through the same `DocSchema` as every saved document.
 
-The scrapbook style also gets tape, hand-drawn doodles and a torn paper label under each caption. These are small SVGs drawn for this app (`src/lib/stickers.ts`), stored in a document as `builtin:<id>` with a colour. The editor only draws ids on that list, so a document can't make it load an arbitrary address. Editorial and clean carry no decorations.
+The model's reply is validated strictly (hex colours, a fixed font list, a fixed theme list, short single-line text). If the model is missing, slow or wrong, the carousel is still made with plain defaults. Set `ANTHROPIC_API_KEY` (and optionally `COMPOSE_MODEL`) to turn it on. Demo mode has no model and always uses the defaults. The route is limited to 12 requests an hour per person, because each one can cost a model call.
 
-The model's reply is validated strictly (hex colours, a fixed font list, short single-line text). If the model is missing, slow or wrong, the carousel is still made with plain defaults. Set `ANTHROPIC_API_KEY` (and optionally `COMPOSE_MODEL`) to turn it on. Demo mode has no model and always uses the defaults. The route is limited to 12 requests an hour per person, because each one can cost a model call.
+### Themes
+
+A theme (`src/lib/themes.ts`) is plain data: the layout (overlapping, tidy grid or tight), tilt, photo cuts, border and shadow, tape and doodles, caption style and font, and a starting palette. Six are built in: Scrapbook, Polaroid, Dreamy, Editorial, Clean and Film. Some follow the colours the model picked for the photos and some keep their own (`palette.adapt`).
+
+The Themes tool in the editor changes a carousel's theme, shuffles it, and lets you change one thing at a time (background, pattern, tilt, tape and doodles, photo edges, captions, borders). `customise()` turns those controls into a new valid theme, which is saved inside the project, so your own themes travel with it. This works without the model: what it said about the photos is saved in the document (`doc.compose`) and `restyleDoc` (`src/lib/restyle.ts`) lays the same photos out again. Text and stickers you added by hand are not kept when you restyle, and one undo brings everything back.
+
+Decorations are small SVGs drawn for this app (`src/lib/stickers.ts`), stored in a document as `builtin:<id>` with a colour. The editor only draws ids on that list, so a document can't make it load an arbitrary address.
 
 ## Design tokens and fonts
 
