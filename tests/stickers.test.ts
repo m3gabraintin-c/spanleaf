@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { newStickerElement } from "@/lib/defaults";
 import { DocSchema } from "@/lib/doc";
 import { DOODLE_IDS, parseSticker, stickerAsset, stickerDataUrl, STICKERS, TAPE_IDS } from "@/lib/stickers";
 
@@ -55,5 +56,25 @@ describe("built-in stickers", () => {
     assert.ok(DocSchema.safeParse(doc(el)).success);
     assert.ok(!DocSchema.safeParse(doc({ ...el, tint: "yellow" })).success);
     assert.ok(!DocSchema.safeParse(doc({ ...el, assetPath: "x".repeat(201) })).success);
+  });
+});
+
+describe("adding a sticker by hand", () => {
+  it("every built-in makes a valid element, centred on the point, in its own shape and colour", () => {
+    for (const id of STICKER_IDS) {
+      const el = newStickerElement(id, 540, 675, 1080);
+      assert.ok(DocSchema.safeParse({ v: 1, background: { type: "color", value: "#ffffff" }, elements: [el] }).success, id);
+      assert.equal(el.type, "sticker");
+      assert.equal(parseSticker(el.assetPath), id);
+      assert.equal(el.tint, STICKERS[id].defaultTint);
+      assert.equal(el.name, STICKERS[id].label);
+      assert.ok(Math.abs(el.x + el.w / 2 - 540) <= 1 && Math.abs(el.y + el.h / 2 - 675) <= 1, `${id} is centred`);
+      assert.ok(Math.abs(el.w / el.h / STICKERS[id].aspect - 1) < 0.05, `${id} keeps its shape`);
+      assert.ok(el.w >= 150 && el.w <= 600, `${id} starts a sensible size`);
+    }
+  });
+  it("tape starts narrower than a label, and each one gets its own id", () => {
+    assert.ok(newStickerElement("tape", 0, 0, 1080).w < newStickerElement("label", 0, 0, 1080).w);
+    assert.notEqual(newStickerElement("star", 0, 0, 1080).id, newStickerElement("star", 0, 0, 1080).id);
   });
 });

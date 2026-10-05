@@ -26,6 +26,7 @@ import { canvasRegistry } from "./registry";
 import { BackgroundPanel } from "./panels/BackgroundPanel";
 import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
+import { StickersPanel } from "./panels/StickersPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { useEditor, type ToolKey } from "./store";
 import { useAutosave } from "./useAutosave";
@@ -250,6 +251,7 @@ function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "media") return <MediaPanel />;
   if (tool === "themes") return <ThemesPanel />;
   if (tool === "text") return <TextPanel />;
+  if (tool === "stickers") return <StickersPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;
   const t = TOOLS.find((x) => x.key === tool)!;

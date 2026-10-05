@@ -1,9 +1,10 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImagePlus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, X } from "lucide-react";
 import { data, DataError, type MediaRecord } from "@/data";
 import { ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
+import { moveItem } from "@/lib/order";
 import { uploadMany, type BatchProgress } from "@/lib/upload";
 import { AppShell, useRequireUser } from "@/components/AppChrome";
 import type { ThemeId } from "@/lib/themes";
@@ -85,7 +86,7 @@ export default function FromPhotosPage() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="text-xl font-bold">Start from photos</h1>
         <p className="mt-2 text-sm text-muted">
-          Add up to {MAX_BATCH_PHOTOS} photos. We&apos;ll arrange them into a carousel you can keep editing. Photos stay in the order you add them.
+          Add up to {MAX_BATCH_PHOTOS} photos. We&apos;ll arrange them into a carousel you can keep editing. Photos go in the order shown, and you can move them.
         </p>
 
         <input
@@ -133,6 +134,14 @@ export default function FromPhotosPage() {
                 <span className="absolute right-1 top-1">
                   <IconButton label={`Remove ${media.name}`} disabled={busy} onClick={() => setPhotos((p) => p.filter((x) => x.media.id !== media.id))}>
                     <X aria-hidden className="size-4" />
+                  </IconButton>
+                </span>
+                <span className="absolute bottom-1 left-1 right-1 flex justify-between">
+                  <IconButton label={`Move ${media.name} earlier`} disabled={busy || i === 0} onClick={() => setPhotos((p) => moveItem(p, i, i - 1))}>
+                    <ChevronLeft aria-hidden className="size-4" />
+                  </IconButton>
+                  <IconButton label={`Move ${media.name} later`} disabled={busy || i === photos.length - 1} onClick={() => setPhotos((p) => moveItem(p, i, i + 1))}>
+                    <ChevronRight aria-hidden className="size-4" />
                   </IconButton>
                 </span>
               </li>
