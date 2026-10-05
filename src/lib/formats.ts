@@ -18,6 +18,11 @@ export const FORMAT_KEYS = Object.keys(FORMATS) as FormatKey[];
 export const MAX_SLIDES_FREE = 10;
 export const MAX_SLIDES_PREMIUM = 20;
 
+/** Most photos one batch takes, whether added in the editor or used to start a carousel. */
+export const MAX_BATCH_PHOTOS = 30;
+/** Uploads running at once. Phones run out of memory resizing many large photos together. */
+export const UPLOAD_CONCURRENCY = 3;
+
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const MAX_IMAGE_EDGE = 4096;
 export const THUMB_EDGE = 512;
