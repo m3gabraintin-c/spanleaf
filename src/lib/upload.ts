@@ -5,7 +5,7 @@ export interface BatchProgress {
   failed: number;
 }
 
-export interface Settled<T> {
+interface Settled<T> {
   /** Position in the list the caller passed in. */
   index: number;
   file: File;
@@ -14,7 +14,7 @@ export interface Settled<T> {
   error?: string;
 }
 
-export interface BatchResult<T> {
+interface BatchResult<T> {
   ok: { index: number; file: File; value: T }[];
   failed: { index: number; file: File; message: string }[];
   /** Files left out because the batch was over maxFiles. */
@@ -95,8 +95,8 @@ export async function uploadMany<T>(
 
   const ok: BatchResult<T>["ok"] = [];
   const failed: BatchResult<T>["failed"] = [];
-  for (const r of settled) {
-    if (!r) continue;
+  // Every file was started, so every slot is filled by now.
+  for (const r of settled as Settled<T>[]) {
     if (r.error !== undefined) failed.push({ index: r.index, file: r.file, message: r.error });
     else ok.push({ index: r.index, file: r.file, value: r.value as T });
   }

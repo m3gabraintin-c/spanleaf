@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ThemeChoiceSchema } from "@/lib/themes";
 import { DocSchema } from "@/lib/doc";
 import { ACCEPTED_IMAGE_TYPES, FORMAT_KEYS, MAX_BATCH_PHOTOS, MAX_IMAGE_EDGE, MAX_UPLOAD_BYTES } from "@/lib/formats";
 
@@ -53,6 +54,7 @@ export const composeInput = z.object({
   format: format.optional(),
   title: title.optional(),
   seed: z.number().int().min(0).max(1_000_000).optional(),
+  theme: ThemeChoiceSchema.optional(),
 });
 
 export const checkoutInput = z.object({ returnTo: z.string().max(200).optional() });

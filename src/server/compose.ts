@@ -1,5 +1,7 @@
 import "server-only";
-import { FALLBACK_PLAN, FALLBACK_TAGS, layoutCarousel, type LayoutPhoto } from "@/lib/compose";
+import { layoutCarousel, type LayoutPhoto } from "@/lib/compose";
+import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
+import type { ThemeChoice } from "@/lib/themes";
 import type { FormatKey } from "@/lib/formats";
 import { MAX_SLIDES_FREE, MAX_SLIDES_PREMIUM } from "@/lib/formats";
 import type { Project } from "@/data/types";
@@ -10,11 +12,13 @@ import { createProject, getProject, patchProject, trashProject } from "./project
 import type { Storage } from "./storage";
 import type { ComposeAi } from "./ai";
 
-export interface ComposeInput {
+interface ComposeInput {
   mediaIds: string[];
   format?: FormatKey;
   title?: string;
   seed?: number;
+  /** A built-in theme id or a custom theme. Without it, the model picks one for the photos. */
+  theme?: ThemeChoice;
 }
 
 interface MediaRow {
@@ -71,6 +75,7 @@ export async function composeProject(deps: { db: Db; storage: Storage; ai: Compo
     format,
     maxSlides: premium ? MAX_SLIDES_PREMIUM : MAX_SLIDES_FREE,
     seed: input.seed ?? Math.floor(Math.random() * 1_000_000),
+    theme: input.theme,
   });
 
   const project = await createProject(deps.db, userId, { format, slideCount, title: input.title || "My carousel" });

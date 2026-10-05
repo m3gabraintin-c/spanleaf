@@ -33,7 +33,8 @@ export function drawMaskedImage(c: Ctx, img: HTMLImageElement, el: Element) {
   const pts = elementPolygon(el);
   const { sx, sy, sw, sh } = sourceRect(el.crop, img.naturalWidth, img.naturalHeight);
 
-  if (el.outline || el.shadow) {
+  const border = el.outline && el.outline.width > 0 ? el.outline : null;
+  if (border || el.shadow) {
     c.save();
     trace(c, pts);
     if (el.shadow) {
@@ -42,7 +43,6 @@ export function drawMaskedImage(c: Ctx, img: HTMLImageElement, el: Element) {
       c.shadowOffsetX = el.shadow.x;
       c.shadowOffsetY = el.shadow.y;
     }
-    const border = el.outline && el.outline.width > 0 ? el.outline : null;
     c.fillStyle = border?.color ?? "#000000";
     c.fill();
     if (border) {

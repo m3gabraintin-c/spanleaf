@@ -1,5 +1,6 @@
 import type { Doc } from "@/lib/doc";
 import type { FormatKey } from "@/lib/formats";
+import type { ThemeChoice } from "@/lib/themes";
 
 /**
  * The data layer contract. Every function maps to a route in architecture.md, so swapping the
@@ -117,7 +118,7 @@ export interface DataLayer {
    * new project. The real API asks a vision model to choose colours, captions and a style. The fake one
    * uses plain defaults. Same seed, same layout.
    */
-  composeProject(input: { mediaIds: string[]; format?: FormatKey; title?: string; seed?: number }): Promise<Project>;
+  composeProject(input: { mediaIds: string[]; format?: FormatKey; title?: string; seed?: number; theme?: ThemeChoice }): Promise<Project>;
   /** GET /api/projects/:id */
   getProject(id: string): Promise<Project>;
   /** PATCH /api/projects/:id. Throws REV_CONFLICT or LIMIT_REACHED. */

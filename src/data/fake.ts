@@ -2,7 +2,8 @@ import { createStore, get, set, keys, getMany } from "idb-keyval";
 import { DocSchema, EMPTY_DOC, mediaIdsOf, uid } from "@/lib/doc";
 import { MAX_SLIDES_FREE, FORMAT_KEYS } from "@/lib/formats";
 import { prepareImage } from "@/lib/image";
-import { FALLBACK_PLAN, FALLBACK_TAGS, layoutCarousel } from "@/lib/compose";
+import { layoutCarousel } from "@/lib/compose";
+import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
 import {
   DataError,
   type DataLayer,
@@ -143,7 +144,7 @@ const fake: DataLayer = {
     return p;
   },
 
-  async composeProject({ mediaIds, format = "portrait_4_5", title, seed }) {
+  async composeProject({ mediaIds, format = "portrait_4_5", title, seed, theme }) {
     const me = await requireUser();
     if (mediaIds.length === 0) throw new DataError("INVALID", "Choose at least one photo.");
     if (new Set(mediaIds).size !== mediaIds.length) throw new DataError("INVALID", "The same photo was chosen twice.");
@@ -153,7 +154,7 @@ const fake: DataLayer = {
     const { doc, slideCount } = layoutCarousel(
       media.map((m) => ({ id: m!.record.id, width: m!.record.width, height: m!.record.height, name: m!.record.name, tags: FALLBACK_TAGS })),
       FALLBACK_PLAN,
-      { format, maxSlides: me.maxSlides, seed: seed ?? Math.floor(Math.random() * 1_000_000) },
+      { format, maxSlides: me.maxSlides, seed: seed ?? Math.floor(Math.random() * 1_000_000), theme },
     );
     const now = new Date().toISOString();
     const p: StoredProject = {

@@ -4,8 +4,10 @@
  * names one as "builtin:<id>" in assetPath and gives its colour in tint. Only ids listed here are ever drawn,
  * so a document can't make the editor load an address of its choosing.
  */
-export interface StickerDef {
+interface StickerDef {
   label: string;
+  /** What it is for. Tape goes on photo edges, a label sits under a caption, doodles go anywhere. */
+  kind: "tape" | "label" | "doodle";
   /** Width divided by height. */
   aspect: number;
   /** The colour a new one starts with. */
@@ -76,12 +78,14 @@ const LABEL = tornOutline(250, 84, 11);
 export const STICKERS: Record<string, StickerDef> = {
   tape: {
     label: "Tape",
+    kind: "tape",
     aspect: 160 / 50,
     defaultTint: "#f3d9a4",
     svg: (t) => wrap(160, 50, `<polygon points="${pts(TAPE)}" fill="${t}" fill-opacity="0.92"/><rect x="0" y="14" width="160" height="5" fill="#fff" fill-opacity="0.22"/>`),
   },
   "tape-stripe": {
     label: "Striped tape",
+    kind: "tape",
     aspect: 160 / 50,
     defaultTint: "#e9a7b8",
     svg: (t) => {
@@ -91,42 +95,49 @@ export const STICKERS: Record<string, StickerDef> = {
   },
   label: {
     label: "Paper label",
+    kind: "label",
     aspect: 250 / 84,
     defaultTint: "#ecebe5",
     svg: (t) => wrap(250, 84, `<polygon points="${pts(LABEL)}" fill="${t}" stroke="#000" stroke-opacity="0.1" stroke-width="1.5"/>`),
   },
   star: {
     label: "Star",
+    kind: "doodle",
     aspect: 1,
     defaultTint: "#f6d94a",
     svg: (t) => wrap(100, 100, `<path d="${starPath(3)}" ${pen(t, 8)}/><path d="${starPath(8)}" ${pen(t, 4)} stroke-opacity="0.5" transform="rotate(4 50 54)"/>`),
   },
   drop: {
     label: "Raindrop",
+    kind: "doodle",
     aspect: 0.7,
     defaultTint: "#ffffff",
     svg: (t) => wrap(70, 100, `<path d="M35,7 C35,7 9,42 9,63 A26,26 0 0 0 61,63 C61,42 35,7 35,7 Z" ${pen(t, 8)}/><path d="M24,66 Q26,76 35,79" ${pen(t, 4)} stroke-opacity="0.7"/>`),
   },
   sparkle: {
     label: "Sparkle",
+    kind: "doodle",
     aspect: 1,
     defaultTint: "#ffffff",
     svg: (t) => wrap(100, 100, `<path d="M50,4 Q55,45 96,50 Q55,55 50,96 Q45,55 4,50 Q45,45 50,4 Z" fill="${t}"/>`),
   },
   heart: {
     label: "Heart",
+    kind: "doodle",
     aspect: 1.1,
     defaultTint: "#ffffff",
     svg: (t) => wrap(110, 100, `<path d="M55,92 C20,66 6,44 6,28 C6,14 17,6 30,6 C42,6 51,13 55,22 C59,13 68,6 80,6 C93,6 104,14 104,28 C104,44 90,66 55,92 Z" ${pen(t, 8)}/>`),
   },
   squiggle: {
     label: "Squiggle",
+    kind: "doodle",
     aspect: 3,
     defaultTint: "#ffffff",
     svg: (t) => wrap(150, 50, `<path d="M6,28 Q22,2 38,26 T70,26 T102,26 T134,26" ${pen(t, 8)}/>`),
   },
   dots: {
     label: "Dots and asterisk",
+    kind: "doodle",
     aspect: 1,
     defaultTint: "#ffffff",
     svg: (t) =>
@@ -139,7 +150,9 @@ export const STICKERS: Record<string, StickerDef> = {
   },
 };
 
-export const STICKER_IDS = Object.keys(STICKERS);
+const idsOf = (kind: StickerDef["kind"]) => Object.keys(STICKERS).filter((id) => STICKERS[id].kind === kind) as [string, ...string[]];
+export const TAPE_IDS = idsOf("tape");
+export const DOODLE_IDS = idsOf("doodle");
 
 const PREFIX = "builtin:";
 export const stickerAsset = (id: string) => PREFIX + id;

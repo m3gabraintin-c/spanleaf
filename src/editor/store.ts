@@ -6,7 +6,7 @@ import type { FormatKey } from "@/lib/formats";
 import type { MediaUrls, Project } from "@/data";
 
 export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
-export type ToolKey = "media" | "text" | "stickers" | "frames" | "draw" | "background" | "adjust" | "layers";
+export type ToolKey = "media" | "themes" | "text" | "stickers" | "frames" | "draw" | "background" | "adjust" | "layers";
 export type LayerMove = "forward" | "backward" | "front" | "back";
 
 const HISTORY_LIMIT = 100;
@@ -48,6 +48,8 @@ interface EditorState {
   moveLayer: (id: string, how: LayerMove) => void;
   reorderLayer: (id: string, toIndex: number) => void;
   toggleLock: (id: string) => void;
+  /** Swaps the whole document as one undo step. Changes with the same key close together share a step. */
+  replaceDoc: (doc: Doc, key?: string) => void;
   setBackground: (color: string) => void;
   /** Pass null to remove the pattern. */
   setPattern: (pattern: Pattern | null) => void;
@@ -232,6 +234,14 @@ export const useEditor = create<EditorState>()(
         if (!el) return;
         remember(s);
         el.locked = !el.locked;
+        touch(s);
+      }),
+
+    replaceDoc: (doc, key) =>
+      set((s) => {
+        remember(s, key);
+        s.doc = doc;
+        s.selectedId = null;
         touch(s);
       }),
 
