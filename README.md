@@ -7,7 +7,7 @@ Status: a working prototype, not a launched product. It runs in two modes, set w
 - **Demo mode** (default): everything is kept in the browser. No server, no accounts, no payments. This is what the browser tests run against.
 - **Real-backend mode** (`NEXT_PUBLIC_DATA_LAYER=api`): Supabase for accounts, database and photo storage, Stripe for billing. The code is written and tested against PostgreSQL with stand-ins for the live services. It has not been run against live Supabase or Stripe. Read `docs/production-setup.md` first.
 
-Known gaps: the Draw tool is a placeholder (drawings aren't drawn yet), no cut-out stickers from your own photos (that needs a background-removal model), no upgrade or account screens, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust) are covered by unit tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
+Known gaps: no account or upgrade screens, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust, Draw, Cut out) are covered by tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
 
 ## Run it
 
@@ -55,6 +55,12 @@ A theme (`src/lib/themes.ts`) is plain data: the layout (overlapping, tidy grid 
 The Themes tool in the editor changes a carousel's theme, shuffles it, and lets you change one thing at a time (background, pattern, tilt, tape and doodles, photo edges, captions, borders). `customise()` turns those controls into a new valid theme, which is saved inside the project, so your own themes travel with it. This works without the model: what it said about the photos is saved in the document (`doc.compose`) and `restyleDoc` (`src/lib/restyle.ts`) lays the same photos out again. Text and stickers you added by hand are not kept when you restyle, and one undo brings everything back.
 
 Decorations are small SVGs drawn for this app (`src/lib/stickers.ts`), stored in a document as `builtin:<id>` with a colour. The editor only draws ids on that list, so a document can't make it load an arbitrary address.
+
+### Draw and Cut out
+
+Draw makes one drawing layer per stroke (a pen, a see-through highlighter, or an eraser). Strokes are smoothed, simplified to at most 200 points and saved as fractions of the layer's box, so they move, resize and turn like any layer.
+
+Cut out removes a photo's background on the person's own device. It runs a small open model (U²-Net small, Apache 2.0, 4.6 MB) with onnxruntime-web (MIT) in a worker, then tidies the mask, can add a die-cut style outline, trims to the object and swaps the layer for the new picture, uploaded like any photo, so the object stays exactly where it was. Undo brings the original back. The model and the runtime are not committed: `npm run models` fetches them into `public/models` (the build and CI run it), and the model is checked against a checksum. The first use downloads about 20 MB. It works best when the object stands out from what is behind it. The test that runs the real model needs about 1 GB of memory and is skipped when the model hasn't been fetched.
 
 ## Design tokens and fonts
 

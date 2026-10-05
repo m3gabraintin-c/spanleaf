@@ -52,10 +52,17 @@ function ball(w: number, h: number) {
   return data;
 }
 
+/** The package on one thread with no worker, so it runs the same way under test as in a page's worker. */
+async function runtime() {
+  const ort = await import("onnxruntime-web");
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.proxy = false;
+  return ort as unknown as OrtLike;
+}
+
 describe("the real model on a real run", { skip: !have && "run npm run models to get the model" }, () => {
   it("finds a clear object: solid in the middle, clear at the corners, and a sensible share of the photo", async () => {
-    const ort = (await import("onnxruntime-web")) as unknown as OrtLike;
-    const matter = await createMatter(ort, new Uint8Array(readFileSync(MODEL)));
+    const matter = await createMatter(await runtime(), new Uint8Array(readFileSync(MODEL)));
     const [w, h] = [400, 300];
     const pred = await matter(ball(w, h), w, h);
     assert.equal(pred.length, MATTE_SIZE * MATTE_SIZE);
@@ -68,8 +75,7 @@ describe("the real model on a real run", { skip: !have && "run npm run models to
   });
 
   it("gives the same answer for the same photo twice", async () => {
-    const ort = (await import("onnxruntime-web")) as unknown as OrtLike;
-    const matter = await createMatter(ort, new Uint8Array(readFileSync(MODEL)));
+    const matter = await createMatter(await runtime(), new Uint8Array(readFileSync(MODEL)));
     const a = Array.from(await matter(ball(200, 150), 200, 150));
     const b = Array.from(await matter(ball(200, 150), 200, 150));
     assert.deepEqual(a, b);

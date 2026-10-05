@@ -93,6 +93,13 @@ describe("simplify", () => {
     const counts = [0.5, 1, 2, 4, 8, 16].map((e) => simplify(w, e).length);
     for (let i = 1; i < counts.length; i++) assert.ok(counts[i] <= counts[i - 1]);
   });
+  it("copes with repeated points, where a segment has no length", () => {
+    const dup = [P(0, 0), P(0, 0), P(0, 0), P(10, 0), P(10, 0)];
+    const out = simplify(dup, 0.5);
+    assert.deepEqual([out[0], out.at(-1)], [P(0, 0), P(10, 0)]);
+    assert.ok(out.length <= dup.length);
+    assert.deepEqual(simplify([P(3, 3), P(3, 3), P(3, 3)], 1), [P(3, 3), P(3, 3)]);
+  });
   it("copes with a very long stroke without running out of stack", () => {
     const long = Array.from({ length: 100_000 }, (_, i) => P(i, Math.sin(i / 50) * 40));
     assert.ok(simplify(long, 1).length < long.length);
@@ -221,6 +228,13 @@ describe("strokeHit", () => {
     const el = strokeElement(pts, style, newId);
     for (const p of pts.filter((_, i) => i % 20 === 0)) assert.equal(strokeHit(el, p, 2), true);
     assert.equal(strokeHit(el, P(pts[0].x + 5000, pts[0].y), 2), false);
+  });
+});
+
+describe("localPoints", () => {
+  it("is nothing for a layer with no stroke, and drops a stray last number", () => {
+    assert.deepEqual(localPoints({ w: 10, h: 10 }), []);
+    assert.deepEqual(localPoints({ w: 10, h: 20, stroke: { color: "#000000", width: 3, points: [0.5, 0.5, 1] } }), [P(5, 10)]);
   });
 });
 
