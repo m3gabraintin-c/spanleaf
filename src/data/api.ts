@@ -127,6 +127,25 @@ const api: DataLayer = {
     return (await call<{ project: Project }>("GET", `/api/projects/${encodeURIComponent(id)}`)).project;
   },
 
+  async duplicateProject(id) {
+    const { project } = await call<{ project: Project }>("POST", `/api/projects/${encodeURIComponent(id)}/duplicate`, {});
+    return { id: project.id, title: project.title, format: project.format, slideCount: project.slideCount, updatedAt: project.updatedAt };
+  },
+
+  async deleteProject(id) {
+    await call("DELETE", `/api/projects/${encodeURIComponent(id)}`);
+  },
+
+  async restoreProject(id) {
+    await call("POST", `/api/projects/${encodeURIComponent(id)}/restore`, {});
+  },
+
+  async renameProject(id, title) {
+    // A save needs the revision it is changing, so read it first. Someone saving in between is a REV_CONFLICT.
+    const { rev } = await api.getProject(id);
+    await api.saveProject(id, { rev, title });
+  },
+
   saveProject: (id, patch) => call<{ rev: number }>("PATCH", `/api/projects/${encodeURIComponent(id)}`, patch as { rev: number; doc?: Doc }),
 
   saveProjectOnExit(id, patch) {

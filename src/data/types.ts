@@ -117,6 +117,14 @@ export interface DataLayer {
    * synchronously, so a normal save, which waits on I/O first, would be cut off. Best effort.
    */
   saveProjectOnExit?(id: string, patch: SavePatch): void;
+  /** POST /api/projects/:id/duplicate. A copy, with " copy" added to its title. */
+  duplicateProject(id: string): Promise<ProjectSummary>;
+  /** DELETE /api/projects/:id. Moves it to the trash, where restoreProject can bring it back for 30 days. */
+  deleteProject(id: string): Promise<void>;
+  /** POST /api/projects/:id/restore */
+  restoreProject(id: string): Promise<void>;
+  /** Changes a project's title without opening it. */
+  renameProject(id: string, title: string): Promise<void>;
   /** POST /api/media/upload-url, then PUT to the signed URL, then POST /api/media/:id/complete */
   uploadImage(file: File): Promise<MediaRecord>;
   /** POST /api/media/urls */

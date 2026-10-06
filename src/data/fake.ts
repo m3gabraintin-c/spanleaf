@@ -1,6 +1,6 @@
 import { createStore, get, set, keys, getMany } from "idb-keyval";
 import { DocSchema, EMPTY_DOC, mediaIdsOf, uid } from "@/lib/doc";
-import { FORMAT_KEYS, MAX_SLIDES } from "@/lib/formats";
+import { FORMAT_KEYS, MAX_SLIDES, type FormatKey } from "@/lib/formats";
 import { prepareImage } from "@/lib/image";
 import { layoutCarousel } from "@/lib/compose";
 import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
@@ -27,6 +27,8 @@ interface StoredProject extends Project {
   createdAt: string;
   /** Who owns it. Rows from before this field existed are claimed by whoever opens them first. */
   ownerId?: string;
+  /** When it was moved to the trash. */
+  deletedAt?: string;
 }
 interface StoredMedia {
   record: MediaRecord;
@@ -41,6 +43,8 @@ interface Pending {
   rev: number;
   doc?: unknown;
   title?: string;
+  format?: FormatKey;
+  slideCount?: number;
 }
 
 const URL_CACHE = new Map<string, MediaUrls>();
@@ -108,7 +112,7 @@ const fake: DataLayer = {
     const all = await keys(store);
     const ids = all.filter((k): k is string => typeof k === "string" && k.startsWith("project:"));
     const me = await requireUser();
-    const rows = (await getMany<StoredProject>(ids, store)).filter((r): r is StoredProject => !!r && (!r.ownerId || r.ownerId === me.id));
+    const rows = (await getMany<StoredProject>(ids, store)).filter((r): r is StoredProject => !!r && !r.deletedAt && (!r.ownerId || r.ownerId === me.id));
     return rows
       .map<ProjectSummary>((p) => ({ id: p.id, title: p.title, format: p.format, slideCount: p.slideCount, updatedAt: p.updatedAt }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -167,7 +171,7 @@ const fake: DataLayer = {
   async getProject(id) {
     const me = await requireUser();
     let p = await get<StoredProject>(`project:${id}`, store);
-    if (!p || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
     if (!p.ownerId) {
       p = { ...p, ownerId: me.id };
       await set(`project:${id}`, p, store);
@@ -190,17 +194,47 @@ const fake: DataLayer = {
 
   saveProjectOnExit(id, patch) {
     try {
-      localStorage.setItem(pendingKey(id), JSON.stringify({ rev: patch.rev, doc: patch.doc, title: patch.title } satisfies Pending));
+      localStorage.setItem(pendingKey(id), JSON.stringify({ rev: patch.rev, doc: patch.doc, title: patch.title, format: patch.format, slideCount: patch.slideCount } satisfies Pending));
     } catch {
       // storage full or blocked. The normal autosave is all there is.
     }
+  },
+
+  async duplicateProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    const now = new Date().toISOString();
+    const copy: StoredProject = { ...structuredClone(p), id: uid(), title: `${p.title.slice(0, 74)} copy`, rev: 0, createdAt: now, updatedAt: now, ownerId: me.id };
+    await set(`project:${copy.id}`, copy, store);
+    return { id: copy.id, title: copy.title, format: copy.format, slideCount: copy.slideCount, updatedAt: copy.updatedAt };
+  },
+
+  async deleteProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    await set(`project:${id}`, { ...p, deletedAt: new Date().toISOString() }, store);
+  },
+
+  async restoreProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p?.deletedAt || (p.ownerId && p.ownerId !== me.id) || Date.now() - Date.parse(p.deletedAt) > 30 * 864e5) throw new DataError("NOT_FOUND", "That project can't be restored.");
+    const { deletedAt: _gone, ...kept } = p;
+    await set(`project:${id}`, kept, store);
+  },
+
+  async renameProject(id, title) {
+    const { rev } = await fake.getProject(id);
+    await fake.saveProject(id, { rev, title });
   },
 
   async saveProject(id, patch) {
     const me = await requireUser();
     const key = `project:${id}`;
     const p = await get<StoredProject>(key, store);
-    if (!p || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
     // Compare and set. The real API does this in one conditional UPDATE.
     if (p.rev !== patch.rev) throw new DataError("REV_CONFLICT", "This project was changed somewhere else.");
     const next: StoredProject = { ...p };
