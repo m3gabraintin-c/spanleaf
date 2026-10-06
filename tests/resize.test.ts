@@ -88,7 +88,7 @@ describe("changing the format in the editor store", () => {
   const S = () => useEditor.getState();
   const project = (doc: Doc, slideCount: number): Project => ({ id: "p1", title: "T", format: "portrait_4_5", slideCount, rev: 0, updatedAt: new Date().toISOString(), doc });
 
-  it("sets the format and document together, clears history and the selection, and marks the project unsaved", () => {
+  it("sets the format and document together, clears the selection, marks the project unsaved, and undo goes back", () => {
     const doc = plain();
     S().load(project(doc, 2));
     S().select("a");
@@ -100,19 +100,25 @@ describe("changing the format in the editor store", () => {
     assert.deepEqual(S().doc, next);
     assert.equal(S().selectedId, null);
     assert.equal(S().saveStatus, "unsaved");
-    assert.equal(S().past.length, 0);
-    assert.equal(S().future.length, 0);
+    assert.equal(S().past.length, 2);
     S().undo();
-    assert.deepEqual(S().doc, next, "there is nothing to undo into the old shape");
+    assert.equal(S().format, "portrait_4_5", "undo goes back to the old shape as well as the old layout");
+    assert.equal(S().doc.elements.find((e) => e.id === "a")!.x, 99);
+    assert.equal(S().doc.elements.find((e) => e.id === "a")!.y, doc.elements[0].y);
+    S().redo();
+    assert.equal(S().format, "square");
+    assert.deepEqual(S().doc, next);
   });
-  it("edits made afterwards can be undone, even right after an edit with the same key", () => {
+  it("edits made afterwards are their own steps, even right after an edit with the same key", () => {
     S().load(project(plain(), 2));
     S().updateElement("a", { x: 1 }, { key: "move" });
     S().setFormat("story_9_16", changeFormat(S().doc, { from: "portrait_4_5", to: "story_9_16", slideCount: 2 }));
     S().updateElement("a", { x: 2 }, { key: "move" });
-    assert.equal(S().past.length, 1, "not folded into the step from before the change");
+    assert.equal(S().past.length, 3, "not folded into the step from before the change");
     S().undo();
     assert.equal(S().doc.elements.find((e) => e.id === "a")!.x, 1);
     assert.equal(S().format, "story_9_16");
+    S().undo();
+    assert.equal(S().format, "portrait_4_5");
   });
 });

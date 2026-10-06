@@ -687,13 +687,19 @@ export default function CanvasStage() {
     setMenu({ left, top });
   }, [selected, dragging, scroll, scale, view, fontsTick, findNode, coarse]);
 
-  const goToSlide = (i: number) => {
-    const el = scroller.current;
-    if (!el) return;
-    const target = Math.min(slideCount - 1, Math.max(0, i));
-    const m = metrics.current;
-    el.scrollTo({ left: m.offX + (target + 0.5) * SLIDE_WIDTH * m.scale - el.clientWidth / 2, behavior: "smooth" });
-  };
+  const goToSlide = useCallback(
+    (i: number) => {
+      const el = scroller.current;
+      if (!el) return;
+      const target = Math.min(slideCount - 1, Math.max(0, i));
+      const m = metrics.current;
+      el.scrollTo({ left: m.offX + (target + 0.5) * SLIDE_WIDTH * m.scale - el.clientWidth / 2, behavior: "smooth" });
+    },
+    [slideCount],
+  );
+  useEffect(() => {
+    canvasRegistry.goToSlide = goToSlide;
+  }, [goToSlide]);
 
   const doDuplicate = (id: string) => {
     const el = elements.find((e) => e.id === id);

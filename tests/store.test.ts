@@ -91,11 +91,11 @@ describe("undo and redo", () => {
     S().undo();
     const redoSnapshot = S().future[0];
     S().updateElement("a", { x: 9 });
-    assert.equal(redoSnapshot.elements[0].x, 2, "the redo snapshot is untouched");
-    assert.equal(S().past.some((d) => d.elements[0]?.x === 9), false);
+    assert.equal(redoSnapshot.doc.elements[0].x, 2, "the redo snapshot is untouched");
+    assert.equal(S().past.some((d) => d.doc.elements[0]?.x === 9), false);
     assert.throws(() => {
       "use strict";
-      (S().past[0] as { v: number }).v = 5;
+      (S().past[0].doc as { v: number }).v = 5;
     });
   });
 });

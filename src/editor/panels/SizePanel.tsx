@@ -40,7 +40,7 @@ export function SizePanel() {
         </p>
       ) : null}
       <p className="text-sm text-muted">
-        A carousel made from photos is arranged again for the new shape. Otherwise everything keeps its place relative to the middle of the slide, so a shorter slide can leave things off the edge. They stay in the Layers list. This can&apos;t be undone, but changing back puts things where they were.
+        A carousel made from photos is arranged again for the new shape. Otherwise everything keeps its place relative to the middle of the slide, so a shorter slide can leave things off the edge. They stay in the Layers list. Undo changes it back, and so does choosing the old shape again.
       </p>
     </div>
   );

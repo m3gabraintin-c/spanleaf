@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Crop, Loader2, Palette, Pencil, PaintBucket, Ratio, Scissors, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
+import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Crop, GalleryHorizontal, Loader2, Palette, Pencil, PaintBucket, Ratio, Scissors, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
 import { data, DataError, type MediaRecord } from "@/data";
 import { FORMATS, SLIDE_WIDTH, ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
 import { uploadMany, type BatchProgress } from "@/lib/upload";
@@ -32,6 +32,7 @@ import { CutoutPanel } from "./panels/CutoutPanel";
 import { DrawPanel } from "./panels/DrawPanel";
 import { FramesPanel } from "./panels/FramesPanel";
 import { SizePanel } from "./panels/SizePanel";
+import { SlidesPanel } from "./panels/SlidesPanel";
 import { StickersPanel } from "./panels/StickersPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { useEditor, type ToolKey } from "./store";
@@ -48,6 +49,7 @@ const TOOLS: (ToolItem & { key: ToolKey })[] = [
   { key: "media", label: "Media", icon: ImagePlus },
   { key: "themes", label: "Themes", icon: Palette },
   { key: "crop", label: "Crop", icon: Crop },
+  { key: "slides", label: "Slides", icon: GalleryHorizontal },
   { key: "size", label: "Size", icon: Ratio },
   { key: "text", label: "Text", icon: Type },
   { key: "layers", label: "Layers", icon: Layers },
@@ -266,6 +268,7 @@ function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "frames") return <FramesPanel />;
   if (tool === "draw") return <DrawPanel />;
   if (tool === "cutout") return <CutoutPanel />;
+  if (tool === "slides") return <SlidesPanel />;
   if (tool === "adjust") return <AdjustPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;

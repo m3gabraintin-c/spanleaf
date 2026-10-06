@@ -2,14 +2,15 @@ import { create } from "zustand";
 import { current } from "immer";
 import { immer } from "zustand/middleware/immer";
 import { inkFor } from "@/lib/colour";
-import { uid, type Doc, type Element, type Pattern } from "@/lib/doc";
+import { MAX_ELEMENTS, uid, type Doc, type Element, type Pattern } from "@/lib/doc";
 import { makePattern } from "@/lib/pattern";
 import { DEFAULT_PEN, MAX_PEN_SIZE, MIN_PEN_SIZE, type Pen } from "@/lib/stroke";
-import type { FormatKey } from "@/lib/formats";
+import { MAX_SLIDES, type FormatKey } from "@/lib/formats";
+import { duplicateSlide, insertSlide, moveSlide, removeSlide, slideOf } from "@/lib/slides";
 import type { MediaUrls, Project } from "@/data";
 
 export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
-export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "cutout" | "background" | "adjust" | "layers";
+export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "cutout" | "slides" | "background" | "adjust" | "layers";
 export type LayerMove = "forward" | "backward" | "front" | "back";
 
 const HISTORY_LIMIT = 100;
@@ -38,8 +39,8 @@ interface EditorState {
   mediaMissing: Record<string, true>;
   announcement: string;
   /** Earlier versions of the document, oldest first. Never saved. Cleared when a project opens. */
-  past: Doc[];
-  future: Doc[];
+  past: Snapshot[];
+  future: Snapshot[];
   lastKey: string | null;
   lastAt: number;
 
@@ -58,8 +59,16 @@ interface EditorState {
   toggleLock: (id: string) => void;
   /** Swaps the whole document as one undo step. Changes with the same key close together share a step. */
   replaceDoc: (doc: Doc, key?: string) => void;
-  /** Changes the project's format together with the document that fits it. History is cleared, because an earlier layout belongs to the old shape. */
+  /** Changes the project's format together with the document that fits it. One undo step goes back to the old shape. */
   setFormat: (format: FormatKey, doc: Doc) => void;
+  /** A blank slide at position at (0 to the slide count). Does nothing at the most slides. */
+  addSlide: (at: number) => void;
+  /** A copy of slide at, straight after it. Does nothing at the most slides or the most layers. */
+  duplicateSlide: (at: number) => void;
+  /** Removes slide at and its layers. Does nothing to a project's only slide. */
+  deleteSlide: (at: number) => void;
+  /** Moves slide from to position to. */
+  moveSlide: (from: number, to: number) => void;
   setBackground: (color: string) => void;
   /** Pass null to remove the pattern. */
   setPattern: (pattern: Pattern | null) => void;
@@ -78,6 +87,23 @@ interface EditorState {
 
 type Draft = EditorState;
 
+/** What undo goes back to: the document, and the shape of the project it was in. */
+interface Snapshot {
+  doc: Doc;
+  slideCount: number;
+  format: FormatKey;
+}
+
+const snapshot = (s: Draft): Snapshot => ({ doc: current(s.doc), slideCount: s.slideCount, format: s.format });
+
+function restore(s: Draft, snap: Snapshot) {
+  s.doc = snap.doc;
+  s.slideCount = snap.slideCount;
+  s.format = snap.format;
+  s.lastKey = null;
+  if (s.selectedId && !s.doc.elements.some((e) => e.id === s.selectedId)) s.selectedId = null;
+}
+
 /** Records the document as it is now, before a change, so the change can be undone. */
 function remember(s: Draft, key?: string) {
   const now = Date.now();
@@ -85,7 +111,7 @@ function remember(s: Draft, key?: string) {
     s.lastAt = now;
     return;
   }
-  s.past.push(current(s.doc));
+  s.past.push(snapshot(s));
   if (s.past.length > HISTORY_LIMIT) s.past.shift();
   s.future = [];
   s.lastKey = key ?? null;
@@ -172,11 +198,11 @@ export const useEditor = create<EditorState>()(
         // Not an undo step. The same measurement is also written into the older snapshots, so undo doesn't
         // bring back a stale height.
         for (const d of s.past) {
-          const e = d.elements.find((x) => x.id === id);
+          const e = d.doc.elements.find((x) => x.id === id);
           if (e) Object.assign(e, patch);
         }
         for (const d of s.future) {
-          const e = d.elements.find((x) => x.id === id);
+          const e = d.doc.elements.find((x) => x.id === id);
           if (e) Object.assign(e, patch);
         }
         touch(s);
@@ -269,12 +295,51 @@ export const useEditor = create<EditorState>()(
 
     setFormat: (format, doc) =>
       set((s) => {
+        remember(s);
         s.format = format;
         s.doc = doc;
         s.selectedId = null;
-        s.past = [];
-        s.future = [];
-        s.lastKey = null;
+        touch(s);
+      }),
+
+    addSlide: (at) =>
+      set((s) => {
+        if (s.slideCount >= MAX_SLIDES || at < 0 || at > s.slideCount) return;
+        remember(s);
+        s.doc = insertSlide(current(s.doc), at);
+        s.slideCount++;
+        touch(s);
+      }),
+
+    duplicateSlide: (at) =>
+      set((s) => {
+        if (s.slideCount >= MAX_SLIDES || at < 0 || at >= s.slideCount) return;
+        const copies = s.doc.elements.filter((e) => slideOf(e) === at).length;
+        if (s.doc.elements.length + copies > MAX_ELEMENTS) {
+          s.announcement = `A copy would go past the limit of ${MAX_ELEMENTS} layers.`;
+          return;
+        }
+        remember(s);
+        s.doc = duplicateSlide(current(s.doc), at);
+        s.slideCount++;
+        touch(s);
+      }),
+
+    deleteSlide: (at) =>
+      set((s) => {
+        if (s.slideCount <= 1 || at < 0 || at >= s.slideCount) return;
+        remember(s);
+        s.doc = removeSlide(current(s.doc), at);
+        s.slideCount--;
+        if (s.selectedId && !s.doc.elements.some((e) => e.id === s.selectedId)) s.selectedId = null;
+        touch(s);
+      }),
+
+    moveSlide: (from, to) =>
+      set((s) => {
+        if (from === to || from < 0 || to < 0 || from >= s.slideCount || to >= s.slideCount) return;
+        remember(s);
+        s.doc = moveSlide(current(s.doc), s.slideCount, from, to);
         touch(s);
       }),
 
@@ -301,10 +366,8 @@ export const useEditor = create<EditorState>()(
       set((s) => {
         const prev = s.past.pop();
         if (!prev) return;
-        s.future.push(current(s.doc));
-        s.doc = prev;
-        s.lastKey = null;
-        if (s.selectedId && !s.doc.elements.some((e) => e.id === s.selectedId)) s.selectedId = null;
+        s.future.push(snapshot(s));
+        restore(s, prev);
         touch(s);
       }),
 
@@ -312,10 +375,8 @@ export const useEditor = create<EditorState>()(
       set((s) => {
         const next = s.future.pop();
         if (!next) return;
-        s.past.push(current(s.doc));
-        s.doc = next;
-        s.lastKey = null;
-        if (s.selectedId && !s.doc.elements.some((e) => e.id === s.selectedId)) s.selectedId = null;
+        s.past.push(snapshot(s));
+        restore(s, next);
         touch(s);
       }),
 

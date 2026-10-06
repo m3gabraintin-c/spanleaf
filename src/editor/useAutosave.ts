@@ -5,6 +5,14 @@ import { useEditor } from "./store";
 
 const DEBOUNCE_MS = 1500;
 
+/** What a save sends: the document and the shape of the project it belongs to. */
+export const savePatch = (s: Pick<ReturnType<typeof useEditor.getState>, "rev" | "doc" | "format" | "slideCount">) => ({
+  rev: s.rev,
+  doc: s.doc,
+  format: s.format,
+  slideCount: s.slideCount,
+});
+
 /**
  * Saves the document about 1.5 s after the last change, and right away when the tab is hidden.
  * One save at a time. Each save carries the revision we last saw, so a second tab gets a
@@ -23,7 +31,7 @@ export function useAutosave() {
     useEditor.getState().setSaveStatus("saving");
     let failed = false;
     try {
-      const { rev } = await data.saveProject(s.projectId, { rev: s.rev, doc: s.doc, format: s.format });
+      const { rev } = await data.saveProject(s.projectId, savePatch(s));
       useEditor.getState().markSaved(rev, version);
     } catch (e) {
       failed = true;
@@ -59,7 +67,7 @@ export function useAutosave() {
     const onExit = () => {
       const s = useEditor.getState();
       if (!s.projectId || s.docVersion === s.savedVersion || s.saveStatus === "conflict" || inflight.current) return;
-      data.saveProjectOnExit?.(s.projectId, { rev: s.rev, doc: s.doc, format: s.format });
+      data.saveProjectOnExit?.(s.projectId, savePatch(s));
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", onExit);
