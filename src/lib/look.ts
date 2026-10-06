@@ -51,6 +51,14 @@ export const StrokeSchema = z.object({
     .refine((p) => p.length % 2 === 0, "Points come in pairs."),
 });
 
+/** A blend from one colour to another across the whole carousel, so it runs unbroken from slide to slide. */
+export const GradientSchema = z.object({
+  from: hex,
+  to: hex,
+  /** Degrees. 0 runs left to right, 90 runs top to bottom. */
+  angle: z.number().min(0).max(360),
+});
+
 export const PATTERN_KINDS = ["grid", "dots", "lines"] as const;
 
 /** A repeating pattern drawn over the background colour, under every element. */
@@ -63,5 +71,6 @@ export const PatternSchema = z.object({
 });
 
 export type Adjust = z.infer<typeof AdjustSchema>;
+export type Gradient = z.infer<typeof GradientSchema>;
 export type Mask = z.infer<typeof MaskSchema>;
 export type Pattern = z.infer<typeof PatternSchema>;

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { current } from "immer";
 import { immer } from "zustand/middleware/immer";
 import { inkFor } from "@/lib/colour";
-import { MAX_ELEMENTS, uid, type Doc, type Element, type Pattern } from "@/lib/doc";
+import { MAX_ELEMENTS, uid, type Doc, type Element, type Gradient, type Pattern } from "@/lib/doc";
 import { makePattern } from "@/lib/pattern";
 import { DEFAULT_PEN, MAX_PEN_SIZE, MIN_PEN_SIZE, type Pen } from "@/lib/stroke";
 import { MAX_SLIDES, type FormatKey } from "@/lib/formats";
@@ -72,6 +72,8 @@ interface EditorState {
   setBackground: (color: string) => void;
   /** Pass null to remove the pattern. */
   setPattern: (pattern: Pattern | null) => void;
+  /** A blend across the whole carousel, or null for none. Changes close together make one undo step. */
+  setGradient: (gradient: Gradient | null) => void;
   undo: () => void;
   redo: () => void;
   select: (id: string | null) => void;
@@ -359,6 +361,15 @@ export const useEditor = create<EditorState>()(
         remember(s, "pattern");
         if (pattern) s.doc.pattern = pattern;
         else delete s.doc.pattern;
+        touch(s);
+      }),
+
+    setGradient: (gradient) =>
+      set((s) => {
+        if (JSON.stringify(s.doc.gradient ?? null) === JSON.stringify(gradient)) return;
+        remember(s, "gradient");
+        if (gradient) s.doc.gradient = gradient;
+        else delete s.doc.gradient;
         touch(s);
       }),
 

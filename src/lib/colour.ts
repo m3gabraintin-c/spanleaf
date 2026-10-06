@@ -28,3 +28,11 @@ export function inkFor(background: string, preferred: string) {
   if (contrast(background, preferred) >= 3) return preferred;
   return contrast(background, "#111111") >= contrast(background, "#ffffff") ? "#111111" : "#ffffff";
 }
+
+/** A colour as six hex digits. A three digit one is widened, and anything else becomes white, so it can go in a field that needs six. */
+export function hex6(colour: string): string {
+  const c = colour.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(c);
+  return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : "#ffffff";
+}

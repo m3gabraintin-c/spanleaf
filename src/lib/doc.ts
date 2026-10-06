@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AdjustSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema, StrokeSchema } from "./look";
+import { AdjustSchema, GradientSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema, StrokeSchema } from "./look";
 import { ComposeMetaSchema } from "./plan";
 
 /**
@@ -67,6 +67,8 @@ export const MAX_ELEMENTS = 500;
 export const DocSchema = z.object({
   v: z.literal(1),
   background: z.object({ type: z.literal("color"), value: z.string() }),
+  /** A blend drawn over the background colour. The colour stays, for the pattern and for text contrast. */
+  gradient: GradientSchema.optional(),
   pattern: PatternSchema.optional(),
   /** How a carousel made from photos was laid out, kept so it can be restyled. See restyle.ts. */
   compose: ComposeMetaSchema.optional(),
@@ -74,7 +76,7 @@ export const DocSchema = z.object({
 });
 
 export type Crop = z.infer<typeof CropSchema>;
-export type { Mask, Pattern } from "./look";
+export type { Gradient, Mask, Pattern } from "./look";
 export type Element = z.infer<typeof ElementSchema>;
 export type TextProps = z.infer<typeof TextSchema>;
 export type Doc = z.infer<typeof DocSchema>;

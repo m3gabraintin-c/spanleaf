@@ -7,7 +7,9 @@ Status: a working prototype, not a launched product. It runs in two modes, set w
 - **Demo mode** (default): everything is kept in the browser. No server, no accounts. This is what the browser tests run against.
 - **Real-backend mode** (`NEXT_PUBLIC_DATA_LAYER=api`): Supabase for accounts, database and photo storage. The code is written and tested against PostgreSQL with stand-ins for the live services. It has not been run against live Supabase. Read `docs/production-setup.md` first.
 
-Known gaps: no account screen, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust, Draw, Cut out) are covered by tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
+Everything is free: there are no plans, no payments and no limit by plan on slides (up to 500 in a project, which is also bounded by the 2 MB a saved project may take and its 500 layers).
+
+Known gaps: no account screen, no template gallery (the Templates page is a stub; starter layouts need empty photo frames, which don't exist yet), no flip or rotate-90 for photos, no align tools, no video, no text effects beyond the basics, no favicon or app icon, placeholder terms and privacy pages. The editor screens added since the themes work (Themes, Crop, Size, Slides, Stickers, Frames, Adjust, Draw, Cut out, gradient backgrounds, the projects page's Rename, Duplicate and Delete) are covered by tests of their logic and by browser tests that have been written but not run, and nothing has been tested in Safari or on a real phone.
 
 ## Run it
 
@@ -54,6 +56,10 @@ A theme (`src/lib/themes.ts`) is plain data: the layout (overlapping, tidy grid 
 The Themes tool in the editor changes a carousel's theme, shuffles it, and lets you change one thing at a time (background, pattern, tilt, tape and doodles, photo edges, captions, borders). `customise()` turns those controls into a new valid theme, which is saved inside the project, so your own themes travel with it. This works without the model: what it said about the photos is saved in the document (`doc.compose`) and `restyleDoc` (`src/lib/restyle.ts`) lays the same photos out again. Text and stickers you added by hand are not kept when you restyle, and one undo brings everything back.
 
 Decorations are small SVGs drawn for this app (`src/lib/stickers.ts`), stored in a document as `builtin:<id>` with a colour. The editor only draws ids on that list, so a document can't make it load an arbitrary address.
+
+### Pages
+
+`src/lib/slides.ts` adds, copies, removes and moves slides. A project is one wide canvas, so each is a shift of layers by whole slide widths, and a layer belongs to the slide under its middle. The editor's history keeps the slide count and format with each document, so undo and redo cover slide changes and a format change. A save carries the slide count and format as well as the document.
 
 ### Draw and Cut out
 

@@ -13,6 +13,7 @@ import { STICKERS, parseSticker, stickerDataUrl } from "@/lib/stickers";
 import { eraserRadius, localPoints, penStyle, StrokeRecorder, strokeElement, strokeHit, type Point } from "@/lib/stroke";
 import { MAX_ELEMENTS } from "@/lib/doc";
 import { isAdjusted } from "@/lib/adjust";
+import { gradientLine } from "@/lib/gradient";
 import { adjustedSource } from "./adjusted";
 import { drawLine, drawMaskedImage, drawPattern, drawStroke, elementPolygon, tracePath } from "./draw";
 import { canvasRegistry, type ImageStatus } from "./registry";
@@ -321,6 +322,7 @@ export default function CanvasStage() {
   const slideCount = useEditor((s) => s.slideCount);
   const elements = useEditor((s) => s.doc.elements);
   const background = useEditor((s) => s.doc.background.value);
+  const gradient = useEditor((s) => s.doc.gradient);
   const pattern = useEditor((s) => s.doc.pattern);
   const selectedId = useEditor((s) => s.selectedId);
   const zoom = useEditor((s) => s.zoom);
@@ -821,6 +823,16 @@ export default function CanvasStage() {
               {/* Content: this layer, and only this layer, is what gets exported. */}
               <Layer ref={contentRef} listening={!drawing}>
                 <Rect width={size.width} height={size.height} fill={background} listening={false} />
+                {gradient ? (
+                  <Rect
+                    width={size.width}
+                    height={size.height}
+                    listening={false}
+                    fillLinearGradientStartPoint={gradientLine(gradient.angle, size.width, size.height).start}
+                    fillLinearGradientEndPoint={gradientLine(gradient.angle, size.width, size.height).end}
+                    fillLinearGradientColorStops={[0, gradient.from, 1, gradient.to]}
+                  />
+                ) : null}
                 {pattern ? (
                   <Shape listening={false} width={size.width} height={size.height} sceneFunc={(ctx) => drawPattern(ctx._context, pattern, size.width, size.height)} />
                 ) : null}
