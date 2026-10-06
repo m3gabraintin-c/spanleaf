@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PricingCards } from "@/components/PricingCards";
 import { APP_NAME } from "@/lib/brand";
 import { buttonClasses } from "@/ui";
 
@@ -13,6 +12,7 @@ const FEATURES = [
   { title: "Made for a computer", body: "A big canvas, keyboard shortcuts, and every control within reach of the keyboard as well as the mouse." },
   { title: "Exact placement", body: "Snap guides, boxes for exact position, size and rotation, and undo and redo that go back 100 steps." },
   { title: "Saved as you go", body: "Each change is saved a moment after you make it, and the header says when it has been." },
+  { title: "Free, with no limits on pages", body: "Every tool is free. Add as many slides as the project needs." },
   { title: "Plain exports", body: "Every slide is an ordinary PNG with no watermark, the same size whatever screen you work on." },
   { title: "Text that matches", body: "30 free fonts come with the app, so the text you see in the editor is the text you export." },
   { title: "Layers you control", body: "Reorder, lock and duplicate. Stack photos and text however you like." },
@@ -24,7 +24,8 @@ const FAQ = [
   { q: "Can I bring in projects from other carousel apps?", a: "No. Start from your own photos." },
   { q: "Which photos can I use?", a: "JPEG, PNG and WebP, up to 25 MB each. HEIC photos from an iPhone aren't supported yet, so export them as JPEG first." },
   { q: "Is there a watermark?", a: "No." },
-  { q: "What does Studio add?", a: "Up to 20 slides in a project instead of 10. We plan to add more, and we'll say so here when it ships." },
+  { q: "What does it cost?", a: "Nothing. Every tool is free, with no plans, no trial and no limit on how many slides a project has." },
+  { q: "How many slides can I make?", a: "As many as you need, up to 500 in one project. A saved project also has to fit in 2 MB and 500 layers." },
 ];
 
 export default function Home() {
@@ -42,8 +43,8 @@ export default function Home() {
             <Link href="/login" className={buttonClasses("primary", "lg")}>
               Start a carousel
             </Link>
-            <Link href="/pricing" className={buttonClasses("secondary", "lg")}>
-              See pricing
+            <Link href="/login" className={buttonClasses("secondary", "lg")}>
+              Sign in
             </Link>
           </div>
         </div>
@@ -67,7 +68,7 @@ export default function Home() {
             A long carousel shouldn't be a fight
           </h2>
           <p className="mt-3 max-w-2xl text-base text-muted">
-            Lining up photos across a dozen slides on a phone is fiddly work, and some apps lose that work when they close. Trials have a habit of turning into charges before they end.
+            Lining up photos across a dozen slides on a phone is fiddly work, and some apps lose that work when they close.
           </p>
           <p className="mt-3 max-w-2xl text-base text-muted">
             {APP_NAME} runs in your browser, on the screen you already edit on, and saves after every change.
@@ -105,16 +106,6 @@ export default function Home() {
               </li>
             ))}
           </ul>
-        </div>
-      </section>
-
-      <section aria-labelledby="pricing" className="mx-auto max-w-(--layout-content-max) px-4 py-14">
-        <h2 id="pricing" className="text-lg font-semibold">
-          Pricing
-        </h2>
-        <p className="mt-2 text-muted">Free up to 10 slides. Studio goes to 20.</p>
-        <div className="mt-6">
-          <PricingCards idPrefix="home" />
         </div>
       </section>
 

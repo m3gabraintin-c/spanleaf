@@ -3,7 +3,7 @@ import * as RTabs from "@radix-ui/react-tabs";
 import type { ReactNode } from "react";
 import { cn } from "./cn";
 
-export interface TabItem {
+interface TabItem {
   value: string;
   label: string;
   content: ReactNode;

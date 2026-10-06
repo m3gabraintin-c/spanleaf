@@ -4,7 +4,7 @@ import type { KeyboardEvent } from "react";
 import { IconButton } from "./IconButton";
 import { cn } from "./cn";
 
-export type LayerType = "image" | "video" | "text" | "sticker" | "frame" | "drawing";
+type LayerType = "image" | "video" | "text" | "sticker" | "frame" | "drawing";
 
 const icons = { image: Image, video: Video, text: Type, sticker: Sticker, frame: Frame, drawing: Pencil };
 

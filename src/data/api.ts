@@ -60,7 +60,7 @@ const q = (o: Record<string, string | number | undefined>) => {
 const origin = () => (typeof location === "undefined" ? "" : location.origin);
 
 const api: DataLayer = {
-  capabilities: { google: process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1", billing: true },
+  capabilities: { google: process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1", email: true },
 
   async getMe() {
     try {
@@ -98,9 +98,6 @@ const api: DataLayer = {
     await call("POST", "/api/onboarding/complete", locale ? { locale } : {});
   },
 
-  startCheckout: (returnTo) => call("POST", "/api/billing/checkout", returnTo ? { returnTo } : {}),
-  openPortal: (returnTo) => call("POST", "/api/billing/portal", returnTo ? { returnTo } : {}),
-
   async deleteAccount() {
     await call("DELETE", "/api/me", { confirm: "DELETE" });
     await browserSupabase().auth.signOut();
@@ -122,8 +119,31 @@ const api: DataLayer = {
     return (await call<{ project: Project }>("POST", "/api/projects", input)).project;
   },
 
+  async composeProject(input) {
+    return (await call<{ project: Project }>("POST", "/api/compose", input)).project;
+  },
+
   async getProject(id) {
     return (await call<{ project: Project }>("GET", `/api/projects/${encodeURIComponent(id)}`)).project;
+  },
+
+  async duplicateProject(id) {
+    const { project } = await call<{ project: Project }>("POST", `/api/projects/${encodeURIComponent(id)}/duplicate`, {});
+    return { id: project.id, title: project.title, format: project.format, slideCount: project.slideCount, updatedAt: project.updatedAt };
+  },
+
+  async deleteProject(id) {
+    await call("DELETE", `/api/projects/${encodeURIComponent(id)}`);
+  },
+
+  async restoreProject(id) {
+    await call("POST", `/api/projects/${encodeURIComponent(id)}/restore`, {});
+  },
+
+  async renameProject(id, title) {
+    // A save needs the revision it is changing, so read it first. Someone saving in between is a REV_CONFLICT.
+    const { rev } = await api.getProject(id);
+    await api.saveProject(id, { rev, title });
   },
 
   saveProject: (id, patch) => call<{ rev: number }>("PATCH", `/api/projects/${encodeURIComponent(id)}`, patch as { rev: number; doc?: Doc }),

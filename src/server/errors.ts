@@ -1,20 +1,18 @@
 import type { DataErrorCode } from "@/data/types";
 
-export type ApiErrorCode = DataErrorCode | "BAD_REQUEST";
+type ApiErrorCode = DataErrorCode | "BAD_REQUEST";
 
 const STATUS: Record<ApiErrorCode, number> = {
   UNAUTHENTICATED: 401,
   NOT_FOUND: 404,
   REV_CONFLICT: 409,
   LIMIT_REACHED: 403,
-  PREMIUM_REQUIRED: 403,
   INVALID: 400,
   BAD_REQUEST: 400,
   UNSUPPORTED_FILE: 415,
   FILE_TOO_LARGE: 413,
   DECODE_FAILED: 400,
   RATE_LIMITED: 429,
-  ALREADY_SUBSCRIBED: 409,
   UPLOAD_MISSING: 409,
   IN_USE: 409,
   ACCOUNT_DELETING: 403,

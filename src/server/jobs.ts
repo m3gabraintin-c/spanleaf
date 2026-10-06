@@ -2,8 +2,6 @@ import "server-only";
 import type { Db } from "./db";
 import { MEDIA_BUCKET } from "./media";
 import type { AuthAdmin, Storage } from "./storage";
-import type { StripeApi } from "./stripe";
-import { applySnapshot } from "./stripe-webhook";
 
 export interface JobResult {
   stats: Record<string, number>;
@@ -63,36 +61,12 @@ export async function trashPurge(db: Db): Promise<JobResult> {
   const purged = await db.asService((tx) => tx`delete from projects where deleted_at < now() - interval '30 days' returning id`);
   const windows = await db.asService((tx) => tx`delete from rate_limits where window_start < now() - interval '1 day' returning key`);
   const runs = await db.asService((tx) => tx`delete from job_runs where started_at < now() - interval '90 days' returning id`);
-  const events = await db.asService((tx) => tx`delete from stripe_events where received_at < now() - interval '90 days' and processed_at is not null returning id`);
-  return { stats: { projects: purged.length, rateLimitRows: windows.length, jobRuns: runs.length, stripeEvents: events.length }, errors: [] };
-}
-
-/** Catches subscriptions whose webhook never arrived: still marked active after their period ended. */
-export async function stripeReconcile(db: Db, stripe: StripeApi): Promise<JobResult> {
-  const errors: string[] = [];
-  let fixed = 0;
-  const rows = await db.asService(
-    (tx) => tx<{ stripe_subscription_id: string }[]>`
-      select stripe_subscription_id from subscriptions
-      where stripe_subscription_id is not null
-        and status in ('trialing', 'active', 'past_due')
-        and current_period_end < now() - interval '1 day'
-      limit 100`,
-  );
-  for (const r of rows) {
-    try {
-      await applySnapshot(db, await stripe.retrieveSubscription(r.stripe_subscription_id));
-      fixed++;
-    } catch {
-      errors.push("a subscription could not be re-fetched");
-    }
-  }
-  return { stats: { checked: rows.length, refreshed: fixed }, errors };
+  return { stats: { projects: purged.length, rateLimitRows: windows.length, jobRuns: runs.length }, errors: [] };
 }
 
 /**
  * Finishes account deletions: removes the user's files, then their sign-in record. Everything else
- * (profile, projects, media rows, subscription row) goes with it through ON DELETE CASCADE.
+ * (profile, projects, media rows) goes with it through ON DELETE CASCADE.
  */
 export async function accountDeletion(db: Db, storage: Storage, authAdmin: AuthAdmin): Promise<JobResult> {
   const errors: string[] = [];

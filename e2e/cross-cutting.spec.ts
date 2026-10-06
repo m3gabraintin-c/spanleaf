@@ -60,9 +60,12 @@ test.describe("X autosave, sessions and two tabs", () => {
     }
     await tab2.keyboard.press("Shift+ArrowDown");
     await waitSaved(tab2);
+    // Back to the first tab. A tab in the background has its timers slowed, so its save would wait.
+    await page.bringToFront();
     await page.getByRole("region", { name: "Canvas area" }).focus();
     await page.keyboard.press("Shift+ArrowRight");
-    await expect(page.getByRole("dialog", { name: "Edited somewhere else" })).toBeVisible({ timeout: 8000 });
+    // The save waits 1.5 s after the last change, and a tab just brought back may still be catching up.
+    await expect(page.getByRole("dialog", { name: "Edited somewhere else" })).toBeVisible({ timeout: 15000 });
     const stored = (await readProject(tab2, id)).doc.elements[0];
     const mine = (await images(tab2))[0];
     expect(stored.y).toBeCloseTo(mine.y, 1); // tab 2's edit is what is stored
@@ -75,7 +78,7 @@ test.describe("X autosave, sessions and two tabs", () => {
     const tab2 = await context.newPage();
     await tab2.goto("/app");
     await tab2.getByRole("button", { name: "Sign out" }).click();
-    await tab2.waitForURL("**/");
+    await tab2.waitForURL((u) => u.pathname === "/");
     await page.getByRole("region", { name: "Canvas area" }).focus();
     await page.keyboard.press("Shift+ArrowRight");
     await page.waitForTimeout(2500);
@@ -147,7 +150,7 @@ test.describe("X small screens: nothing spills sideways at 320px", () => {
       const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(over, `${label} spills ${over}px sideways`).toBeLessThanOrEqual(0);
     };
-    for (const p of ["/", "/pricing", "/terms", "/login"]) {
+    for (const p of ["/", "/terms", "/login"]) {
       await page.goto(p);
       await check(p);
     }

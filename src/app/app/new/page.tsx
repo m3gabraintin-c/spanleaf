@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { data, DataError } from "@/data";
-import { FORMATS, FORMAT_KEYS, type FormatKey } from "@/lib/formats";
+import { FORMATS, FORMAT_KEYS, MAX_SLIDES, type FormatKey } from "@/lib/formats";
 import { AppShell, useRequireUser } from "@/components/AppChrome";
 import { Button, IconButton, SegmentedControl, TextField } from "@/ui";
 
@@ -62,14 +62,21 @@ export default function NewProjectPage() {
               <IconButton label="Fewer slides" disabled={slides <= 1} onClick={() => setSlides((n) => n - 1)}>
                 <Minus aria-hidden className="size-5" />
               </IconButton>
-              <output aria-live="polite" className="w-10 text-center text-lg font-semibold tabular-nums">
-                {slides}
-              </output>
-              <IconButton label="More slides" disabled={slides >= me.maxSlides} onClick={() => setSlides((n) => n + 1)}>
+              <input
+                aria-label="Number of slides"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_SLIDES}
+                value={slides}
+                onChange={(e) => setSlides(Math.min(MAX_SLIDES, Math.max(1, Math.round(Number(e.target.value)) || 1)))}
+                className="h-10 w-20 rounded-md border border-field bg-page text-center text-lg font-semibold tabular-nums"
+              />
+              <IconButton label="More slides" disabled={slides >= MAX_SLIDES} onClick={() => setSlides((n) => n + 1)}>
                 <Plus aria-hidden className="size-5" />
               </IconButton>
             </div>
-            <p className="text-sm text-muted">Your plan allows up to {me.maxSlides} slides.</p>
+            <p className="text-sm text-muted">As many as you like, up to {MAX_SLIDES}. You can add and remove slides later.</p>
           </div>
 
           {error ? (

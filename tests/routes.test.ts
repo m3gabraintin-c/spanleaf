@@ -154,12 +154,12 @@ describe("limits and failures", () => {
     current = { id: erin };
     assert.equal((await limitedCreate(post({}))).status, 200);
   });
-  it("a project over the plan's slide limit is a clean 403, not a database error", async () => {
+  it("any slide count up to 500 is fine, and one past it is a clean 400, not a database error", async () => {
     const fay = await mkUser(t.sql, "fay@example.test");
     current = { id: fay };
-    const r = await jsonOf(await create(post({ slideCount: 11 })));
-    assert.equal(r.status, 403);
-    assert.equal(r.body.error.code, "LIMIT_REACHED");
+    assert.equal((await jsonOf(await create(post({ slideCount: 11 })))).status, 200);
+    assert.equal((await jsonOf(await create(post({ slideCount: 500 })))).status, 200);
+    assert.equal((await jsonOf(await create(post({ slideCount: 501 })))).status, 400);
   });
   it("an account being deleted is refused everywhere except the deletion route", async () => {
     const gus = await mkUser(t.sql, "gus@example.test");

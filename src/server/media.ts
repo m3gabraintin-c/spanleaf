@@ -8,7 +8,8 @@ import type { Storage } from "./storage";
 
 export const MEDIA_BUCKET = "media";
 const GB = 1024 ** 3;
-const QUOTA = { free: 2 * GB, premium: 20 * GB };
+/** Each person's storage, the same for everyone. It stops one account filling the bucket. */
+const QUOTA = 20 * GB;
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 interface MediaRow {
@@ -33,10 +34,8 @@ export async function createUploadUrl(
   if (input.bytes > MAX_UPLOAD_BYTES) throw new ApiError("FILE_TOO_LARGE", "That image is over 25 MB.");
 
   const row = await deps.db.asUser(userId, async (tx) => {
-    const [{ used, premium }] = await tx<{ used: string; premium: boolean }[]>`
-      select coalesce(sum(bytes), 0)::text as used, current_user_is_premium() as premium from media`;
-    const cap = premium ? QUOTA.premium : QUOTA.free;
-    if (Number(used) + input.bytes > cap) throw new ApiError("LIMIT_REACHED", "You've used all of your storage. Delete some photos first.");
+    const [{ used }] = await tx<{ used: string }[]>`select coalesce(sum(bytes), 0)::text as used from media`;
+    if (Number(used) + input.bytes > QUOTA) throw new ApiError("LIMIT_REACHED", "You've used all of your storage. Delete some photos first.");
     // The id and paths are built here from the caller's id. They never come from the client, and the
     // media_path_in_owner_folder constraint rejects any path outside the caller's folder.
     const id = randomUUID();

@@ -59,11 +59,7 @@ export async function newProject(page: Page, opts: NewProjectOpts = {}): Promise
   await page.goto("/app/new");
   if (opts.name !== undefined) await page.getByLabel("Name").fill(opts.name);
   if (opts.format) await page.getByRole("radio", { name: opts.format }).click();
-  if (opts.slides) {
-    const current = Number(await page.getByRole("group", { name: "Slides" }).locator("output").textContent());
-    const btn = page.getByRole("button", { name: opts.slides > current ? "More slides" : "Fewer slides" });
-    for (let i = 0; i < Math.abs(opts.slides - current); i++) await btn.click();
-  }
+  if (opts.slides) await page.getByLabel("Number of slides").fill(String(opts.slides));
   await page.getByRole("button", { name: "Create project" }).click();
   await page.waitForURL("**/app/project/**");
   await canvasReady(page);

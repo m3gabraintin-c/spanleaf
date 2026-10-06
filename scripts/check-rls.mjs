@@ -28,11 +28,10 @@ async function as(role, query) {
 }
 try {
   ok("app_user can read projects through row level security", (await as("app_user", "select count(*) from projects")) === null);
-  ok("app_user can read templates and template_docs", (await as("app_user", "select count(*) from templates, template_docs")) === null);
-  ok("app_user can ask about its own plan", (await as("app_user", "select current_user_is_premium()")) === null);
+  ok("app_user can read its own media", (await as("app_user", "select count(*) from media")) === null);
   for (const role of ["anon", "authenticated"]) {
     ok(`${role} is refused on projects`, (await as(role, "select count(*) from projects")) === "42501");
-    ok(`${role} is refused on subscriptions`, (await as(role, "select count(*) from subscriptions")) === "42501");
+    ok(`${role} is refused on media`, (await as(role, "select count(*) from media")) === "42501");
   }
   const [{ n }] = await sql`select count(*)::int as n from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated')`;
   ok("anon and authenticated hold no table grants in public", n === 0, `${n} found`);

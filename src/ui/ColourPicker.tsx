@@ -5,7 +5,7 @@ import { cn } from "./cn";
 
 // These are user content colours (what goes on a slide), not interface colours.
 // Raw hex is correct here. They are data, and the UI tokens never reference them.
-export const SWATCHES = [
+const SWATCHES = [
   "#ffffff", "#f2efe9", "#d9d9d9", "#808080", "#1a1a1a", "#000000",
   "#e63946", "#f4a261", "#f2cc3a", "#2a9d8f", "#3a86ff", "#8338ec",
 ];

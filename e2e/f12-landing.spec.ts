@@ -17,7 +17,7 @@ test.describe("F12 landing page", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Seamless carousels, made at your desk.");
     const h2s = await page.getByRole("heading", { level: 2 }).allTextContents();
-    expect(h2s).toEqual(["A long carousel shouldn't be a fight", "How it works", "What you get", "Pricing", "Questions", "Make your first carousel."]);
+    expect(h2s).toEqual(["A long carousel shouldn't be a fight", "How it works", "What you get", "Questions", "Make your first carousel."]);
     for (const l of await page.getByRole("link", { name: "Start a carousel" }).all()) await expect(l).toHaveAttribute("href", "/login");
     expect(await page.getByRole("link", { name: "Start a carousel" }).count()).toBe(2);
   });
@@ -30,22 +30,12 @@ test.describe("F12 landing page", () => {
     expect(info).toEqual({ ok: true, w: "1800", h: "1125" });
   });
 
-  test("F12-P1 prices on the page come from one place, and say Studio isn't on sale yet", async ({ page }) => {
+  test("F12-P1 it says it is free, and shows no prices, plans or trial", async ({ page }) => {
     await page.goto("/");
-    const section = page.getByRole("region", { name: "Pricing" });
-    await expect(section).toContainText("$29.99");
-    await expect(section).toContainText("$3.99 a month");
-    await expect(section).toContainText("Yearly saves 37%");
-    await expect(section).toContainText("Coming soon");
-    await expect(section).toContainText("Studio isn't on sale yet");
-    await expect(section).not.toContainText(/weekly\s*\$|\$\d+(\.\d\d)?\s*(a|per)\s*week/i);
-    await page.goto("/pricing");
-    await expect(page.getByRole("main")).toContainText("$29.99");
-  });
-
-  test("F12-P2 the billing terms are described as planned, not as live", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("list", { name: "Planned billing terms" })).toContainText("Planned");
+    const text = await page.getByRole("main").innerText();
+    expect(text).toContain("Every tool is free");
+    expect(text).not.toMatch(/\$\d|per month|a month|\bStudio\b|\bPremium\b/i);
+    await expect(page.getByRole("link", { name: /pricing/i })).toHaveCount(0);
   });
 
   test("F12-C1 no invented proof and no claims for things that aren't built", async ({ page }) => {
@@ -65,8 +55,8 @@ test.describe("F12 landing page", () => {
     const text = await page.locator("body").innerText();
     expect(text).toContain("1080 pixels wide");
     expect(text).toContain("25 MB");
-    expect(text).toContain("10 slides");
-    expect(text).toContain("20 slides");
+    expect(text).toContain("Every tool is free");
+    expect(text).toContain("Add as many slides as the project needs");
     expect(text).toContain("100 steps");
     expect(text).toContain("30 free fonts");
   });
@@ -86,8 +76,6 @@ test.describe("F12 landing page", () => {
     await axeClean(page, "landing, questions closed");
     for (const s of await page.locator("summary").all()) await s.click();
     await axeClean(page, "landing, questions open");
-    await page.goto("/pricing");
-    await axeClean(page, "pricing");
   });
 
   test("F12-L1 every link on the page goes somewhere that loads", async ({ page, request }) => {
@@ -115,7 +103,7 @@ test.describe("F12 landing page", () => {
     page.on("request", (r) => {
       if (r.url().includes("editor.webp")) hits.push(r.url());
     });
-    for (const path of ["/login", "/pricing", "/terms"]) {
+    for (const path of ["/login", "/terms"]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(4200); // the browser only warns about an unused preload a few seconds after load
@@ -123,11 +111,11 @@ test.describe("F12 landing page", () => {
     expect(hits, "a page that doesn't show the hero image fetched it anyway").toEqual([]);
   });
 
-  test("F12-H3 the site header says only its name and two links, on every page, with no stray text", async ({ page }) => {
-    for (const path of ["/", "/pricing", "/terms", "/privacy", "/refund", "/contact"]) {
+  test("F12-H3 the site header says only its name and one link, on every page, with no stray text", async ({ page }) => {
+    for (const path of ["/", "/terms", "/privacy", "/contact"]) {
       await page.goto(path);
       const text = (await page.locator("header").first().innerText()).replace(/\s+/g, " ").trim();
-      expect(text, `header text on ${path}`).toBe("Spanleaf Pricing Sign in");
+      expect(text, `header text on ${path}`).toBe("Spanleaf Sign in");
     }
   });
 
@@ -146,8 +134,6 @@ test.describe("F12 landing page on small screens", () => {
     for (const s of await page.locator("summary").all()) await s.click();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(over).toBeLessThanOrEqual(0);
-    await page.goto("/pricing");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
 });
 

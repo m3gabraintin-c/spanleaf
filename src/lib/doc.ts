@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AdjustSchema, GradientSchema, hex, MaskSchema, OutlineSchema, PatternSchema, ShadowSchema, StrokeSchema } from "./look";
+import { ComposeMetaSchema } from "./plan";
 
 /**
  * The saved project document. Same shape as architecture.md.
@@ -6,7 +8,7 @@ import { z } from "zod";
  * before rotation, and rotation (degrees) turns the element about that corner.
  * Array order is z-order, bottom first. Slides are never stored. They are cut at export.
  */
-export const TextSchema = z.object({
+const TextSchema = z.object({
   value: z.string().max(2000),
   /** A font id from fonts.generated.ts, such as "inter". */
   font: z.string().min(1).max(60),
@@ -16,7 +18,21 @@ export const TextSchema = z.object({
   bold: z.boolean(),
 });
 
-export const ElementSchema = z.object({
+/**
+ * The part of the photo that shows, as fractions of the original (0 to 1). Missing means the whole
+ * photo, stretched to the element's w and h as before. Aspect ratio is the layout's job: pick a crop
+ * whose shape matches w by h, or the photo is squashed. See coverCrop in geometry.ts.
+ */
+const CropSchema = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    w: z.number().min(0.01).max(1),
+    h: z.number().min(0.01).max(1),
+  })
+  .refine((c) => c.x + c.w <= 1.0001 && c.y + c.h <= 1.0001, "The crop runs past the edge of the photo.");
+
+const ElementSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["image", "video", "text", "sticker", "frame", "drawing"]),
   x: z.number(),
@@ -29,16 +45,38 @@ export const ElementSchema = z.object({
   locked: z.boolean().default(false),
   name: z.string().max(200).optional(),
   mediaId: z.string().optional(),
-  assetPath: z.string().optional(),
+  /** For a sticker: "builtin:<id>" from stickers.ts. */
+  assetPath: z.string().max(200).optional(),
+  /** A sticker's colour. */
+  tint: hex.optional(),
   text: TextSchema.optional(),
+  /** Photo styling. All optional, so documents saved before these existed load unchanged. */
+  crop: CropSchema.optional(),
+  mask: MaskSchema.optional(),
+  outline: OutlineSchema.optional(),
+  shadow: ShadowSchema.optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  adjust: AdjustSchema.optional(),
+  /** For a drawing layer: the line that was drawn. */
+  stroke: StrokeSchema.optional(),
 });
+
+/** The most layers a project can hold. */
+export const MAX_ELEMENTS = 500;
 
 export const DocSchema = z.object({
   v: z.literal(1),
   background: z.object({ type: z.literal("color"), value: z.string() }),
-  elements: z.array(ElementSchema).max(500),
+  /** A blend drawn over the background colour. The colour stays, for the pattern and for text contrast. */
+  gradient: GradientSchema.optional(),
+  pattern: PatternSchema.optional(),
+  /** How a carousel made from photos was laid out, kept so it can be restyled. See restyle.ts. */
+  compose: ComposeMetaSchema.optional(),
+  elements: z.array(ElementSchema).max(MAX_ELEMENTS),
 });
 
+export type Crop = z.infer<typeof CropSchema>;
+export type { Gradient, Mask, Pattern } from "./look";
 export type Element = z.infer<typeof ElementSchema>;
 export type TextProps = z.infer<typeof TextSchema>;
 export type Doc = z.infer<typeof DocSchema>;

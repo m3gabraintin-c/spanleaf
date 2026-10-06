@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { randomUUID } from "node:crypto";
-import { accountDeletion, mediaCleanup, runJob, stripeReconcile, trashPurge } from "@/server/jobs";
+import { accountDeletion, mediaCleanup, runJob, trashPurge } from "@/server/jobs";
 import { MEDIA_BUCKET } from "@/server/media";
 import { rateLimit } from "@/server/rateLimit";
-import { apiCode, FakeAuthAdmin, FakeStorage, FakeStripe, freshDb, mkUser, snap, type TestDb } from "./helpers";
+import { apiCode, FakeAuthAdmin, FakeStorage, freshDb, mkUser, type TestDb } from "./helpers";
 
 let t: TestDb;
 let alice: string;
@@ -78,33 +78,10 @@ describe("trash purge", () => {
     assert.deepEqual(left.sort(), [recent, live].sort());
     assert.equal(r.stats.projects, 1);
   });
-  it("also tidies old counters, job logs and processed webhook events", async () => {
+  it("also tidies old counters and job logs", async () => {
     await t.sql`insert into rate_limits (key, window_start, count) values ('old', now() - interval '3 days', 5), ('new', now(), 1)`;
-    await t.sql`insert into stripe_events (id,type,received_at,processed_at) values ('evt_old','x', now() - interval '100 days', now() - interval '100 days'), ('evt_unprocessed','x', now() - interval '100 days', null)`;
     await trashPurge(t.db);
     assert.deepEqual((await t.sql`select key from rate_limits`).map((r) => r.key), ["new"]);
-    assert.deepEqual((await t.sql`select id from stripe_events`).map((r) => r.id), ["evt_unprocessed"], "an event that never finished is kept for a human to look at");
-  });
-});
-
-describe("stripe reconcile", () => {
-  it("re-checks subscriptions that look active but ran past their period, and fixes them", async () => {
-    const u = await mkUser(t.sql, "stale@example.test");
-    await t.sql`insert into subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, current_period_end)
-                values (${u}, 'cus_stale', 'sub_stale', 'active', now() - interval '3 days')`;
-    const stripe = new FakeStripe();
-    stripe.subs.set("sub_stale", snap({ id: "sub_stale", customerId: "cus_stale", status: "canceled", userId: u }));
-    const r = await stripeReconcile(t.db, stripe);
-    assert.equal(r.stats.refreshed, 1);
-    assert.equal((await t.sql`select status from subscriptions where user_id = ${u}`)[0].status, "canceled");
-  });
-  it("leaves healthy subscriptions alone", async () => {
-    const u = await mkUser(t.sql, "healthy@example.test");
-    await t.sql`insert into subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, current_period_end)
-                values (${u}, 'cus_ok', 'sub_ok', 'active', now() + interval '10 days')`;
-    const stripe = new FakeStripe();
-    await stripeReconcile(t.db, stripe);
-    assert.equal(stripe.retrieveCalls, 0);
   });
 });
 
@@ -117,12 +94,11 @@ describe("account deletion", () => {
     const other = await mkUser(t.sql, "stays@example.test");
     const keep = await addMedia(other);
     await t.sql`insert into projects (user_id,format,doc) values (${u},'square',${t.sql.json(DOC)}), (${other},'square',${t.sql.json(DOC)})`;
-    await t.sql`insert into subscriptions (user_id, stripe_customer_id, status) values (${u}, 'cus_bye', 'canceled')`;
     await t.sql`update profiles set deletion_requested_at = now() where id = ${u}`;
 
     const r = await accountDeletion(t.db, storage, new FakeAuthAdmin(t.sql));
     assert.equal(r.stats.deleted, 1);
-    for (const table of ["auth.users", "profiles", "projects", "media", "subscriptions"]) {
+    for (const table of ["auth.users", "profiles", "projects", "media"]) {
       const col = table === "auth.users" || table === "profiles" ? "id" : "user_id";
       const [{ n }] = await t.sql.unsafe(`select count(*)::int as n from ${table} where ${col} = '${u}'`);
       assert.equal(n, 0, `${table} still has rows for the deleted user`);

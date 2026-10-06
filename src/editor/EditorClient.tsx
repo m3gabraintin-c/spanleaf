@@ -2,9 +2,10 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Loader2, Pencil, PaintBucket, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
-import { data, DataError } from "@/data";
-import { FORMATS, SLIDE_WIDTH, ACCEPTED_IMAGE_TYPES } from "@/lib/formats";
+import { ChevronLeft, Download, ImagePlus, Frame, ImageOff, Layers, Crop, GalleryHorizontal, Loader2, Palette, Pencil, PaintBucket, Ratio, Scissors, Redo2, SlidersHorizontal, Sticker, Type, Undo2 } from "lucide-react";
+import { data, DataError, type MediaRecord } from "@/data";
+import { FORMATS, SLIDE_WIDTH, ACCEPTED_IMAGE_TYPES, MAX_BATCH_PHOTOS, UPLOAD_CONCURRENCY } from "@/lib/formats";
+import { uploadMany, type BatchProgress } from "@/lib/upload";
 import { uid } from "@/lib/doc";
 import {
   Button,
@@ -25,6 +26,15 @@ import { canvasRegistry } from "./registry";
 import { BackgroundPanel } from "./panels/BackgroundPanel";
 import { LayersPanel } from "./panels/LayersPanel";
 import { TextPanel } from "./panels/TextPanel";
+import { AdjustPanel } from "./panels/AdjustPanel";
+import { CropPanel } from "./panels/CropPanel";
+import { CutoutPanel } from "./panels/CutoutPanel";
+import { DrawPanel } from "./panels/DrawPanel";
+import { FramesPanel } from "./panels/FramesPanel";
+import { SizePanel } from "./panels/SizePanel";
+import { SlidesPanel } from "./panels/SlidesPanel";
+import { StickersPanel } from "./panels/StickersPanel";
+import { ThemesPanel } from "./panels/ThemesPanel";
 import { useEditor, type ToolKey } from "./store";
 import { useAutosave } from "./useAutosave";
 import { useExport } from "./useExport";
@@ -37,11 +47,16 @@ const CanvasStage = dynamic(() => import("./CanvasStage"), {
 
 const TOOLS: (ToolItem & { key: ToolKey })[] = [
   { key: "media", label: "Media", icon: ImagePlus },
+  { key: "themes", label: "Themes", icon: Palette },
+  { key: "crop", label: "Crop", icon: Crop },
+  { key: "slides", label: "Slides", icon: GalleryHorizontal },
+  { key: "size", label: "Size", icon: Ratio },
   { key: "text", label: "Text", icon: Type },
   { key: "layers", label: "Layers", icon: Layers },
   { key: "stickers", label: "Stickers", icon: Sticker },
   { key: "frames", label: "Frames", icon: Frame },
   { key: "draw", label: "Draw", icon: Pencil },
+  { key: "cutout", label: "Cut out", icon: Scissors },
   { key: "background", label: "Colour", icon: PaintBucket },
   { key: "adjust", label: "Adjust", icon: SlidersHorizontal },
 ];
@@ -153,53 +168,65 @@ function useHistoryShortcuts() {
 function MediaPanel() {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<BatchProgress | null>(null);
+  const busy = progress !== null;
   const addElement = useEditor((s) => s.addElement);
   const addMediaUrls = useEditor((s) => s.addMediaUrls);
   const announce = useEditor((s) => s.announce);
 
+  const place = async (media: MediaRecord) => {
+    addMediaUrls(await data.getMediaUrls([media.id]));
+    // Fit inside 80% of a slide and centre it on the slide in view.
+    const { format } = useEditor.getState();
+    const f = FORMATS[format];
+    const k = Math.min((f.width * 0.8) / media.width, (f.height * 0.8) / media.height, 1);
+    const w = Math.round(media.width * k);
+    const h = Math.round(media.height * k);
+    const slide = canvasRegistry.currentSlide();
+    const cx = slide * SLIDE_WIDTH + f.width / 2;
+    const cy = f.height / 2;
+    // Photos that would land exactly on top of another one are shifted down and right a step,
+    // so adding several at once doesn't look like adding one.
+    const existing = useEditor.getState().doc.elements;
+    let step = 0;
+    while (step < 8 && existing.some((e) => Math.abs(e.x + e.w / 2 - (cx + step * 56)) < 30 && Math.abs(e.y + e.h / 2 - (cy + step * 56)) < 30)) step++;
+    const nudge = step * 56;
+    addElement({
+      id: uid(),
+      type: "image",
+      x: Math.round(slide * SLIDE_WIDTH + (f.width - w) / 2 + nudge),
+      y: Math.round((f.height - h) / 2 + nudge),
+      w,
+      h,
+      rotation: 0,
+      locked: false,
+      name: media.name,
+      mediaId: media.id,
+    });
+    announce(`Added ${media.name} to slide ${slide + 1}`);
+  };
+
   const onFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    setBusy(true);
+    setProgress({ total: files.length, finished: 0, failed: 0 });
     try {
-      for (const file of Array.from(files)) {
-        try {
-          const media = await data.uploadImage(file);
-          addMediaUrls(await data.getMediaUrls([media.id]));
-          // Fit inside 80% of a slide and centre it on the slide in view.
-          const { format } = useEditor.getState();
-          const f = FORMATS[format];
-          const k = Math.min((f.width * 0.8) / media.width, (f.height * 0.8) / media.height, 1);
-          const w = Math.round(media.width * k);
-          const h = Math.round(media.height * k);
-          const slide = canvasRegistry.currentSlide();
-          const cx = slide * SLIDE_WIDTH + f.width / 2;
-          const cy = f.height / 2;
-          // Photos that would land exactly on top of another one are shifted down and right a step,
-          // so adding several at once doesn't look like adding one.
-          const existing = useEditor.getState().doc.elements;
-          let step = 0;
-          while (step < 8 && existing.some((e) => Math.abs(e.x + e.w / 2 - (cx + step * 56)) < 30 && Math.abs(e.y + e.h / 2 - (cy + step * 56)) < 30)) step++;
-          const nudge = step * 56;
-          addElement({
-            id: uid(),
-            type: "image",
-            x: Math.round(slide * SLIDE_WIDTH + (f.width - w) / 2 + nudge),
-            y: Math.round((f.height - h) / 2 + nudge),
-            w,
-            h,
-            rotation: 0,
-            locked: false,
-            name: media.name,
-            mediaId: media.id,
-          });
-          announce(`Added ${media.name} to slide ${slide + 1}`);
-        } catch (e) {
-          toast("error", e instanceof DataError || e instanceof Error ? e.message : "That photo couldn't be added.");
-        }
-      }
+      // Uploads run a few at a time, but photos are placed in the order they were picked.
+      const result = await uploadMany(Array.from(files), (f) => data.uploadImage(f), {
+        concurrency: UPLOAD_CONCURRENCY,
+        maxFiles: MAX_BATCH_PHOTOS,
+        onProgress: setProgress,
+        onSettled: async (r) => {
+          if (r.error !== undefined) return toast("error", r.error);
+          try {
+            await place(r.value!);
+          } catch (e) {
+            toast("error", e instanceof DataError || e instanceof Error ? e.message : "That photo couldn't be added.");
+          }
+        },
+      });
+      if (result.skipped > 0) toast("error", `Only the first ${MAX_BATCH_PHOTOS} photos were added.`);
     } finally {
-      setBusy(false);
+      setProgress(null);
       if (input.current) input.current.value = "";
     }
   };
@@ -222,7 +249,7 @@ function MediaPanel() {
         icon={<ImagePlus aria-hidden className="size-4" />}
         onClick={() => input.current?.click()}
       >
-        Add photos
+        {progress && progress.total > 1 ? `Adding ${Math.min(progress.finished + 1, progress.total)} of ${progress.total}` : "Add photos"}
       </Button>
       <p className="text-sm text-muted">JPEG, PNG or WebP, up to 25 MB each. Photos land on the slide you&apos;re looking at.</p>
       <p className="text-sm text-muted">Drag a photo across a slide edge and it will split cleanly when you export.</p>
@@ -233,7 +260,16 @@ function MediaPanel() {
 
 function ToolBody({ tool }: { tool: ToolKey }) {
   if (tool === "media") return <MediaPanel />;
+  if (tool === "themes") return <ThemesPanel />;
+  if (tool === "crop") return <CropPanel />;
+  if (tool === "size") return <SizePanel />;
   if (tool === "text") return <TextPanel />;
+  if (tool === "stickers") return <StickersPanel />;
+  if (tool === "frames") return <FramesPanel />;
+  if (tool === "draw") return <DrawPanel />;
+  if (tool === "cutout") return <CutoutPanel />;
+  if (tool === "slides") return <SlidesPanel />;
+  if (tool === "adjust") return <AdjustPanel />;
   if (tool === "layers") return <LayersPanel />;
   if (tool === "background") return <BackgroundPanel />;
   const t = TOOLS.find((x) => x.key === tool)!;

@@ -63,16 +63,23 @@ test.describe("F02 start from a blank canvas", () => {
     }
   });
 
-  test("F02-E4 slide count stays between 1 and 10 on a free plan", async ({ page }) => {
+  test("F02-E4 slide count is anything from 1 to 500, with no plan limit", async ({ page }) => {
     await page.goto("/app/new");
     const fewer = page.getByRole("button", { name: "Fewer slides" });
     const more = page.getByRole("button", { name: "More slides" });
+    const count = page.getByLabel("Number of slides");
     for (let i = 0; i < 5; i++) if (await fewer.isEnabled()) await fewer.click();
     await expect(fewer).toBeDisabled();
-    await expect(page.getByRole("group", { name: "Slides" }).locator("output")).toHaveText("1");
-    for (let i = 0; i < 12; i++) if (await more.isEnabled()) await more.click();
+    await expect(count).toHaveValue("1");
+    await count.fill("12");
+    await expect(count).toHaveValue("12");
+    await more.click();
+    await expect(count).toHaveValue("13");
+    await count.fill("9999");
+    await expect(count).toHaveValue("500");
     await expect(more).toBeDisabled();
-    await expect(page.getByRole("group", { name: "Slides" }).locator("output")).toHaveText("10");
+    await count.fill("0");
+    await expect(count).toHaveValue("1");
   });
 
   test("F02-E4b a one-slide project works: navigation disabled, one image exported", async ({ page }) => {
@@ -134,6 +141,7 @@ test.describe("F02 start from a blank canvas", () => {
     const id = await newProject(page, { name: "Alice only" });
     await page.goto("/app");
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await signIn(page, "mallory@example.test");
     await page.goto(`/app/project/${id}`);
     await expect(page.getByRole("heading", { name: "Project not found" })).toBeVisible({ timeout: 5000 });

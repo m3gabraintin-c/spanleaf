@@ -1,20 +1,19 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, ImagePlus, Plus } from "lucide-react";
 import { data, type ProjectSummary } from "@/data";
-import { FORMATS } from "@/lib/formats";
+import { ProjectCard } from "@/components/ProjectCard";
 import { AppShell, useRequireUser } from "@/components/AppChrome";
-import { EmptyState, Skeleton, buttonClasses } from "@/ui";
-
-function when(iso: string) {
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
-}
+import { Button, EmptyState, Skeleton, buttonClasses } from "@/ui";
 
 export default function ProjectsPage() {
   const me = useRequireUser();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
+  /** The project just deleted, so the page can offer to bring it back. */
+  const [deleted, setDeleted] = useState<ProjectSummary | null>(null);
+  const [problem, setProblem] = useState<string>();
 
   useEffect(() => {
     if (!me) return;
@@ -23,16 +22,57 @@ export default function ProjectsPage() {
 
   if (!me) return <div className="min-h-dvh" aria-busy="true" />;
 
+  /** Runs a change to a project, and says so if it fails. */
+  const attempt = async (what: () => Promise<void>) => {
+    setProblem(undefined);
+    try {
+      await what();
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : "That didn't work. Try again.");
+    }
+  };
+  const reload = () => data.listProjects().then(setProjects, () => setFailed(true));
+
   return (
     <AppShell me={me}>
       <main className="mx-auto max-w-(--layout-content-max) px-4 py-8">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-xl font-bold">Your projects</h1>
-          <Link href="/app/new" className={buttonClasses("primary", "md")}>
-            <Plus aria-hidden className="mr-2 size-4" />
-            New project
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/app/photos" className={buttonClasses("secondary", "md")}>
+              <ImagePlus aria-hidden className="mr-2 size-4" />
+              Start from photos
+            </Link>
+            <Link href="/app/new" className={buttonClasses("primary", "md")}>
+              <Plus aria-hidden className="mr-2 size-4" />
+              New project
+            </Link>
+          </div>
         </div>
+
+        {problem ? (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {problem}
+          </p>
+        ) : null}
+        {deleted ? (
+          <div role="status" className="mt-4 flex items-center justify-between gap-3 rounded-md border border-line bg-surface px-4 py-3 text-sm">
+            <span className="min-w-0 truncate">Deleted &ldquo;{deleted.title}&rdquo;.</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                attempt(async () => {
+                  await data.restoreProject(deleted.id);
+                  setDeleted(null);
+                  await reload();
+                })
+              }
+            >
+              Undo
+            </Button>
+          </div>
+        ) : null}
 
         <div className="mt-8">
           {failed ? (
@@ -61,15 +101,28 @@ export default function ProjectsPage() {
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
               {projects.map((p) => (
                 <li key={p.id}>
-                  <Link href={`/app/project/${p.id}`} className="group flex flex-col gap-2 rounded-lg">
-                    <div className="grid aspect-[4/5] place-items-center rounded-md border border-line bg-canvas text-sm text-muted t-fast group-hover:shadow-card">
-                      {p.slideCount} slides &middot; {FORMATS[p.format].label}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{p.title}</p>
-                      <p className="text-xs text-muted">Edited {when(p.updatedAt)}</p>
-                    </div>
-                  </Link>
+                  <ProjectCard
+                    project={p}
+                    onRename={(title) =>
+                      attempt(async () => {
+                        await data.renameProject(p.id, title);
+                        await reload();
+                      })
+                    }
+                    onDuplicate={() =>
+                      attempt(async () => {
+                        await data.duplicateProject(p.id);
+                        await reload();
+                      })
+                    }
+                    onDelete={() =>
+                      attempt(async () => {
+                        await data.deleteProject(p.id);
+                        setDeleted(p);
+                        await reload();
+                      })
+                    }
+                  />
                 </li>
               ))}
             </ul>

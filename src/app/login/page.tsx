@@ -76,7 +76,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={error}
-          hint={data.capabilities.billing ? "We'll email you a sign-in link. There's no password to remember." : "This build doesn't send email. Signing in is simulated on this device."}
+          hint={data.capabilities.email ? "We'll email you a sign-in link. There's no password to remember." : "This build doesn't send email. Signing in is simulated on this device."}
         />
         <Button type="submit" loading={busy}>
           Continue

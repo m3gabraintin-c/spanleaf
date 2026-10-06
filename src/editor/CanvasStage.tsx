@@ -1,13 +1,21 @@
 "use client";
 import Konva from "konva";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
-import { Image as KImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import { Image as KImage, Layer, Line, Rect, Shape, Stage, Text, Transformer } from "react-konva";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import { FORMATS, SLIDE_WIDTH, canvasSize, slideIndexAt } from "@/lib/formats";
 import { layerName, type Element } from "@/lib/doc";
 import { cssFamily, fontState, loadFont, onFontsChange } from "@/lib/fonts";
 import { token, tokenPx } from "@/lib/tokens-runtime";
 import { FloatingElementMenu, IconButton } from "@/ui";
+import { sourceRect } from "@/lib/geometry";
+import { STICKERS, parseSticker, stickerDataUrl } from "@/lib/stickers";
+import { eraserRadius, localPoints, penStyle, StrokeRecorder, strokeElement, strokeHit, type Point } from "@/lib/stroke";
+import { MAX_ELEMENTS } from "@/lib/doc";
+import { isAdjusted } from "@/lib/adjust";
+import { gradientLine } from "@/lib/gradient";
+import { adjustedSource } from "./adjusted";
+import { drawLine, drawMaskedImage, drawPattern, drawStroke, elementPolygon, tracePath } from "./draw";
 import { canvasRegistry, type ImageStatus } from "./registry";
 import { useEditor } from "./store";
 
@@ -135,11 +143,10 @@ function useElementHandlers(el: Element, hooks: NodeHooks) {
   };
 }
 
-function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; missing: boolean; hooks: NodeHooks }) {
-  const img = useImage(el.id, url, missing);
+/** What every layer that has a box needs: where it is, how to grab it, and how to fold a resize back into its box. */
+function useBoxHandlers(el: Element, hooks: NodeHooks) {
   const update = useEditor((s) => s.updateElement);
-  const ink = useMemo(() => ({ fill: token("surface-hover"), stroke: token("border-input"), text: token("text-muted"), font: token("ff-sans") }), []);
-  const common = {
+  return {
     ...useElementHandlers(el, hooks),
     width: el.w,
     height: el.h,
@@ -159,6 +166,34 @@ function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; mis
       });
     },
   };
+}
+
+function StrokeNode({ el, hooks }: { el: Element; hooks: NodeHooks }) {
+  const common = useBoxHandlers(el, hooks);
+  const stroke = el.stroke!;
+  return (
+    <Shape
+      {...common}
+      opacity={el.opacity ?? 1}
+      // Only used to pick the stroke when it is touched. A thin line needs a wider target.
+      stroke="#000000"
+      strokeWidth={stroke.width}
+      hitStrokeWidth={Math.max(stroke.width, 28)}
+      lineCap="round"
+      lineJoin="round"
+      sceneFunc={(ctx) => drawStroke(ctx._context, el)}
+      hitFunc={(ctx, shape) => {
+        tracePath(ctx, localPoints(el));
+        ctx.strokeShape(shape);
+      }}
+    />
+  );
+}
+
+function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; missing: boolean; hooks: NodeHooks }) {
+  const img = useImage(el.id, url, missing);
+  const ink = useMemo(() => ({ fill: token("surface-hover"), stroke: token("border-input"), text: token("text-muted"), font: token("ff-sans") }), []);
+  const common = useBoxHandlers(el, hooks);
 
   if (missing) {
     return (
@@ -179,7 +214,45 @@ function ImageNode({ el, url, missing, hooks }: { el: Element; url?: string; mis
       </>
     );
   }
-  return <KImage {...common} image={img ?? undefined} />;
+  const opacity = el.opacity ?? 1;
+
+  // A cut shape or a border needs our own drawing. Everything else stays a plain Konva image,
+  // which is what the editor tests look for.
+  if (el.mask || el.outline || isAdjusted(el.adjust)) {
+    return (
+      <Shape
+        {...common}
+        opacity={opacity}
+        sceneFunc={(ctx) => {
+          if (img) drawMaskedImage(ctx._context, adjustedSource(img, el.adjust), el);
+        }}
+        hitFunc={(ctx, shape) => {
+          const p = elementPolygon(el);
+          ctx.beginPath();
+          ctx.moveTo(p[0], p[1]);
+          for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+          ctx.closePath();
+          ctx.fillStrokeShape(shape);
+        }}
+      />
+    );
+  }
+
+  const src = img && el.crop ? sourceRect(el.crop, img.naturalWidth, img.naturalHeight) : null;
+  return (
+    <KImage
+      {...common}
+      image={img ?? undefined}
+      opacity={opacity}
+      crop={src ? { x: src.sx, y: src.sy, width: src.sw, height: src.sh } : undefined}
+      shadowEnabled={!!el.shadow}
+      shadowColor={el.shadow?.color}
+      shadowBlur={el.shadow?.blur}
+      shadowOffsetX={el.shadow?.x}
+      shadowOffsetY={el.shadow?.y}
+      shadowOpacity={el.shadow?.opacity}
+    />
+  );
 }
 
 function TextNode({ el, hooks }: { el: Element; hooks: NodeHooks }) {
@@ -249,6 +322,8 @@ export default function CanvasStage() {
   const slideCount = useEditor((s) => s.slideCount);
   const elements = useEditor((s) => s.doc.elements);
   const background = useEditor((s) => s.doc.background.value);
+  const gradient = useEditor((s) => s.doc.gradient);
+  const pattern = useEditor((s) => s.doc.pattern);
   const selectedId = useEditor((s) => s.selectedId);
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
@@ -262,6 +337,11 @@ export default function CanvasStage() {
   const toggleLock = useEditor((s) => s.toggleLock);
   const announce = useEditor((s) => s.announce);
   const fontsTick = useFontsTick();
+  const tool = useEditor((s) => s.tool);
+  const pen = useEditor((s) => s.pen);
+  const addElement = useEditor((s) => s.addElement);
+  const removeElements = useEditor((s) => s.removeElements);
+  const drawing = tool === "draw";
 
   const scroller = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -483,6 +563,94 @@ export default function CanvasStage() {
     [constrain, showGuides],
   );
 
+  // ---------------------------------------------------------------- drawing
+
+  const liveRef = useRef<Konva.Shape>(null);
+  const live = useRef<{ rec: StrokeRecorder; pts: Point[]; style: ReturnType<typeof penStyle> } | null>(null);
+  /** True while the eraser is held down. */
+  const erasing = useRef(false);
+  const latestPen = useRef(pen);
+  latestPen.current = pen;
+
+  const liveDraw = useCallback((c: CanvasRenderingContext2D) => {
+    const l = live.current;
+    if (!l) return;
+    c.save();
+    c.globalAlpha = l.style.opacity;
+    drawLine(c, l.pts, l.style.color, l.style.width);
+    c.restore();
+  }, []);
+
+  const pointer = useCallback((): Point | null => {
+    const st = stageRef.current;
+    const p = st?.getPointerPosition();
+    return st && p ? { x: (p.x - st.x()) / st.scaleX(), y: (p.y - st.y()) / st.scaleY() } : null;
+  }, []);
+
+  const eraseAt = useCallback(
+    (p: Point) => {
+      const r = eraserRadius(latestPen.current.size);
+      const ids = latest.current.elements.filter((e) => e.type === "drawing" && !e.locked && strokeHit(e, p, r)).map((e) => e.id);
+      if (ids.length) removeElements(ids, "erase");
+    },
+    [removeElements],
+  );
+
+  const beginDraw = () => {
+    const p = pointer();
+    if (!p) return;
+    if (latestPen.current.mode === "eraser") {
+      erasing.current = true;
+      eraseAt(p);
+      return;
+    }
+    const style = penStyle(latestPen.current);
+    // Skip points closer than about a screen pixel, so a slow hand doesn't make thousands.
+    const rec = new StrokeRecorder(1.2 / metrics.current.scale);
+    rec.add(p);
+    live.current = { rec, pts: [...rec.points], style };
+    liveRef.current?.getLayer()?.batchDraw();
+  };
+
+  const moveDraw = () => {
+    const p = pointer();
+    if (!p) return;
+    if (erasing.current) return eraseAt(p);
+    const l = live.current;
+    if (!l) return;
+    if (l.rec.add(p)) {
+      l.pts = [...l.rec.points];
+      liveRef.current?.getLayer()?.batchDraw();
+    }
+  };
+
+  const endDraw = () => {
+    erasing.current = false;
+    const l = live.current;
+    if (!l) return;
+    live.current = null;
+    const p = pointer();
+    const pts = p ? l.rec.finish(p) : [...l.rec.points];
+    liveRef.current?.getLayer()?.batchDraw();
+    if (pts.length === 0) return;
+    if (latest.current.elements.length >= MAX_ELEMENTS) return announce(`This project has reached its limit of ${MAX_ELEMENTS} layers. Delete some to keep drawing.`);
+    const made = strokeElement(pts, l.style);
+    // Saved projects are limited to 2 MB. Stop a little short, so a stroke never makes a save fail.
+    if (JSON.stringify(useEditor.getState().doc).length + JSON.stringify(made).length > 1_800_000) return announce("This project is too large to add more drawing.");
+    addElement(made, { select: false });
+  };
+
+  // Entering Draw mode: let go of any selection, and show a crosshair.
+  useEffect(() => {
+    const container = stageRef.current?.container();
+    if (container) container.style.cursor = drawing ? "crosshair" : "";
+    if (drawing) select(null);
+    else {
+      live.current = null;
+      erasing.current = false;
+    }
+  }, [drawing, select]);
+
   // ---------------------------------------------------------------- selection handles and the floating menu
 
   const selected = elements.find((e) => e.id === selectedId);
@@ -521,13 +689,19 @@ export default function CanvasStage() {
     setMenu({ left, top });
   }, [selected, dragging, scroll, scale, view, fontsTick, findNode, coarse]);
 
-  const goToSlide = (i: number) => {
-    const el = scroller.current;
-    if (!el) return;
-    const target = Math.min(slideCount - 1, Math.max(0, i));
-    const m = metrics.current;
-    el.scrollTo({ left: m.offX + (target + 0.5) * SLIDE_WIDTH * m.scale - el.clientWidth / 2, behavior: "smooth" });
-  };
+  const goToSlide = useCallback(
+    (i: number) => {
+      const el = scroller.current;
+      if (!el) return;
+      const target = Math.min(slideCount - 1, Math.max(0, i));
+      const m = metrics.current;
+      el.scrollTo({ left: m.offX + (target + 0.5) * SLIDE_WIDTH * m.scale - el.clientWidth / 2, behavior: "smooth" });
+    },
+    [slideCount],
+  );
+  useEffect(() => {
+    canvasRegistry.goToSlide = goToSlide;
+  }, [goToSlide]);
 
   const doDuplicate = (id: string) => {
     const el = elements.find((e) => e.id === id);
@@ -611,7 +785,7 @@ export default function CanvasStage() {
         {/* An empty box as long as the whole carousel, so the scroll bars are the right length. */}
         <div style={{ width: contentW, height: contentH, position: "relative" }}>
           {/* The window the stage is drawn in. It stays put while the box above scrolls under it. */}
-          <div style={{ position: "sticky", top: 0, left: 0, width: view.w || 1, height: view.h || 1 }}>
+          <div style={{ position: "sticky", top: 0, left: 0, width: view.w || 1, height: view.h || 1, touchAction: drawing ? "none" : undefined }}>
             <Stage
               ref={stageRef}
               width={view.w || 1}
@@ -621,14 +795,25 @@ export default function CanvasStage() {
               scaleX={scale}
               scaleY={scale}
               onMouseDown={(e) => {
+                if (drawing) return beginDraw();
                 if (e.target === e.target.getStage()) {
                   select(null);
                   scroller.current?.focus({ preventScroll: true });
                 }
               }}
               onTouchStart={(e) => {
+                if (drawing) return beginDraw();
                 if (e.target === e.target.getStage()) select(null);
               }}
+              onMouseMove={() => moveDraw()}
+              onTouchMove={(e) => {
+                if (drawing && e.evt.cancelable) e.evt.preventDefault();
+                moveDraw();
+              }}
+              onMouseUp={() => endDraw()}
+              onMouseLeave={() => endDraw()}
+              onTouchEnd={() => endDraw()}
+              onTouchCancel={() => endDraw()}
             >
               {/* Backdrop: the soft shadow under the artboard. Never exported. */}
               <Layer listening={false}>
@@ -636,25 +821,45 @@ export default function CanvasStage() {
               </Layer>
 
               {/* Content: this layer, and only this layer, is what gets exported. */}
-              <Layer ref={contentRef}>
+              <Layer ref={contentRef} listening={!drawing}>
                 <Rect width={size.width} height={size.height} fill={background} listening={false} />
-                {elements.map((el) =>
-                  el.type === "image" ? (
-                    <ImageNode
-                      key={el.id}
-                      el={el}
-                      url={el.mediaId ? mediaUrls[el.mediaId]?.url : undefined}
-                      missing={!!el.mediaId && !!mediaMissing[el.mediaId]}
-                      hooks={hooks}
-                    />
-                  ) : el.type === "text" && el.text ? (
-                    <TextNode key={el.id} el={el} hooks={hooks} />
-                  ) : null,
-                )}
+                {gradient ? (
+                  <Rect
+                    width={size.width}
+                    height={size.height}
+                    listening={false}
+                    fillLinearGradientStartPoint={gradientLine(gradient.angle, size.width, size.height).start}
+                    fillLinearGradientEndPoint={gradientLine(gradient.angle, size.width, size.height).end}
+                    fillLinearGradientColorStops={[0, gradient.from, 1, gradient.to]}
+                  />
+                ) : null}
+                {pattern ? (
+                  <Shape listening={false} width={size.width} height={size.height} sceneFunc={(ctx) => drawPattern(ctx._context, pattern, size.width, size.height)} />
+                ) : null}
+                {elements.map((el) => {
+                  if (el.type === "image") {
+                    return (
+                      <ImageNode
+                        key={el.id}
+                        el={el}
+                        url={el.mediaId ? mediaUrls[el.mediaId]?.url : undefined}
+                        missing={!!el.mediaId && !!mediaMissing[el.mediaId]}
+                        hooks={hooks}
+                      />
+                    );
+                  }
+                  if (el.type === "sticker") {
+                    // Only built-in stickers we know are drawn. Anything else is skipped, not fetched.
+                    const id = parseSticker(el.assetPath);
+                    return id ? <ImageNode key={el.id} el={el} url={stickerDataUrl(id, el.tint ?? STICKERS[id].defaultTint)} missing={false} hooks={hooks} /> : null;
+                  }
+                  if (el.type === "drawing") return el.stroke ? <StrokeNode key={el.id} el={el} hooks={hooks} /> : null;
+                  return el.type === "text" && el.text ? <TextNode key={el.id} el={el} hooks={hooks} /> : null;
+                })}
               </Layer>
 
               {/* Editing aids: slide dividers, snap guides and selection handles. Never exported. */}
-              <Layer>
+              <Layer listening={!drawing}>
                 {Array.from({ length: slideCount - 1 }, (_, i) => (
                   <Line
                     key={i}
@@ -671,6 +876,8 @@ export default function CanvasStage() {
                 {guides.y.map((gy) => (
                   <Line key={`gy${gy}`} name="guide" points={[0, gy, size.width, gy]} stroke={colours.guide} strokeWidth={1} strokeScaleEnabled={false} listening={false} />
                 ))}
+                {/* The stroke being drawn right now. It is moved by hand, not by React, so drawing stays smooth. */}
+                <Shape ref={liveRef} listening={false} sceneFunc={(ctx) => liveDraw(ctx._context)} />
                 <Transformer
                   ref={trRef}
                   flipEnabled={false}

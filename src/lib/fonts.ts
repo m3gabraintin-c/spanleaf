@@ -2,10 +2,10 @@ import { FONTS, type FontEntry } from "./fonts.generated";
 
 export { FONTS };
 export type { FontEntry };
-export const DEFAULT_FONT = "inter";
+const DEFAULT_FONT = "inter";
 
 const byId = new Map(FONTS.map((f) => [f.id, f]));
-export const fontById = (id: string): FontEntry => byId.get(id) ?? byId.get(DEFAULT_FONT)!;
+const fontById = (id: string): FontEntry => byId.get(id) ?? byId.get(DEFAULT_FONT)!;
 export const hasBold = (id: string) => !!fontById(id).files[700];
 
 /** The name the canvas uses. Fonts are registered under it when they load. */
@@ -13,7 +13,7 @@ export const cssFamily = (id: string) => fontById(id).name;
 
 export const FONT_GROUPS = ["Sans", "Display", "Serif", "Script and hand"].map((g) => ({ group: g, fonts: FONTS.filter((f) => f.group === g) }));
 
-export type FontState = "loading" | "ready" | "error";
+type FontState = "loading" | "ready" | "error";
 const state = new Map<string, FontState>();
 const pending = new Map<string, Promise<boolean>>();
 const listeners = new Set<() => void>();

@@ -1,7 +1,9 @@
 import { createStore, get, set, keys, getMany } from "idb-keyval";
 import { DocSchema, EMPTY_DOC, mediaIdsOf, uid } from "@/lib/doc";
-import { MAX_SLIDES_FREE, FORMAT_KEYS } from "@/lib/formats";
+import { FORMAT_KEYS, MAX_SLIDES, type FormatKey } from "@/lib/formats";
 import { prepareImage } from "@/lib/image";
+import { layoutCarousel } from "@/lib/compose";
+import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
 import {
   DataError,
   type DataLayer,
@@ -25,6 +27,8 @@ interface StoredProject extends Project {
   createdAt: string;
   /** Who owns it. Rows from before this field existed are claimed by whoever opens them first. */
   ownerId?: string;
+  /** When it was moved to the trash. */
+  deletedAt?: string;
 }
 interface StoredMedia {
   record: MediaRecord;
@@ -39,6 +43,8 @@ interface Pending {
   rev: number;
   doc?: unknown;
   title?: string;
+  format?: FormatKey;
+  slideCount?: number;
 }
 
 const URL_CACHE = new Map<string, MediaUrls>();
@@ -66,12 +72,12 @@ async function requireUser(): Promise<Me> {
 }
 
 const fake: DataLayer = {
-  capabilities: { google: false, billing: false },
+  capabilities: { google: false, email: false },
 
   async getMe() {
     const user = await get<{ id: string; email: string }>("auth:user", store);
     if (!user) return null;
-    return { ...user, premium: false, maxSlides: MAX_SLIDES_FREE };
+    return user;
   },
 
   async signIn(email) {  // the destination only matters for the real email link
@@ -80,7 +86,7 @@ const fake: DataLayer = {
     const existing = await get<{ id: string; email: string }>("auth:user", store);
     const user = existing?.email === clean ? existing : { id: uid(), email: clean };
     await set("auth:user", user, store);
-    return { status: "signed_in", me: { ...user, premium: false, maxSlides: MAX_SLIDES_FREE } };
+    return { status: "signed_in", me: user };
   },
 
   async signOut() {
@@ -90,14 +96,6 @@ const fake: DataLayer = {
   },
 
   async completeOnboarding() {},
-
-  async startCheckout() {
-    throw new DataError("INTERNAL", "Billing isn't connected in this build.");
-  },
-
-  async openPortal() {
-    throw new DataError("INTERNAL", "Billing isn't connected in this build.");
-  },
 
   async deleteAccount() {
     await requireUser();
@@ -114,7 +112,7 @@ const fake: DataLayer = {
     const all = await keys(store);
     const ids = all.filter((k): k is string => typeof k === "string" && k.startsWith("project:"));
     const me = await requireUser();
-    const rows = (await getMany<StoredProject>(ids, store)).filter((r): r is StoredProject => !!r && (!r.ownerId || r.ownerId === me.id));
+    const rows = (await getMany<StoredProject>(ids, store)).filter((r): r is StoredProject => !!r && !r.deletedAt && (!r.ownerId || r.ownerId === me.id));
     return rows
       .map<ProjectSummary>((p) => ({ id: p.id, title: p.title, format: p.format, slideCount: p.slideCount, updatedAt: p.updatedAt }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -123,8 +121,7 @@ const fake: DataLayer = {
   async createProject({ format, slideCount, title }) {
     const me = await requireUser();
     if (!FORMAT_KEYS.includes(format)) throw new DataError("INVALID", "Unknown format.");
-    if (!Number.isInteger(slideCount) || slideCount < 1) throw new DataError("INVALID", "Slide count must be at least 1.");
-    if (slideCount > me.maxSlides) throw new DataError("LIMIT_REACHED", `Your plan allows up to ${me.maxSlides} slides.`);
+    if (!Number.isInteger(slideCount) || slideCount < 1 || slideCount > MAX_SLIDES) throw new DataError("INVALID", `Slide count must be from 1 to ${MAX_SLIDES}.`);
     const now = new Date().toISOString();
     const p: StoredProject = {
       id: uid(),
@@ -142,10 +139,39 @@ const fake: DataLayer = {
     return p;
   },
 
+  async composeProject({ mediaIds, format = "portrait_4_5", title, seed, theme }) {
+    const me = await requireUser();
+    if (mediaIds.length === 0) throw new DataError("INVALID", "Choose at least one photo.");
+    if (new Set(mediaIds).size !== mediaIds.length) throw new DataError("INVALID", "The same photo was chosen twice.");
+    const media = await Promise.all(mediaIds.map((id) => get<StoredMedia>(`media:${id}`, store)));
+    if (media.some((m) => !m || (m.ownerId && m.ownerId !== me.id))) throw new DataError("INVALID", "Some of those photos aren't yours or aren't ready.");
+    // No model in the browser demo, so the carousel gets the plain defaults.
+    const { doc, slideCount } = layoutCarousel(
+      media.map((m) => ({ id: m!.record.id, width: m!.record.width, height: m!.record.height, name: m!.record.name, tags: FALLBACK_TAGS })),
+      FALLBACK_PLAN,
+      { format, maxSlides: MAX_SLIDES, seed: seed ?? Math.floor(Math.random() * 1_000_000), theme },
+    );
+    const now = new Date().toISOString();
+    const p: StoredProject = {
+      id: uid(),
+      title: title?.trim() || "My carousel",
+      format,
+      slideCount,
+      doc: DocSchema.parse(doc),
+      rev: 1,
+      mediaIds: mediaIdsOf(doc),
+      createdAt: now,
+      updatedAt: now,
+      ownerId: me.id,
+    };
+    await set(`project:${p.id}`, p, store);
+    return p;
+  },
+
   async getProject(id) {
     const me = await requireUser();
     let p = await get<StoredProject>(`project:${id}`, store);
-    if (!p || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
     if (!p.ownerId) {
       p = { ...p, ownerId: me.id };
       await set(`project:${id}`, p, store);
@@ -168,17 +194,47 @@ const fake: DataLayer = {
 
   saveProjectOnExit(id, patch) {
     try {
-      localStorage.setItem(pendingKey(id), JSON.stringify({ rev: patch.rev, doc: patch.doc, title: patch.title } satisfies Pending));
+      localStorage.setItem(pendingKey(id), JSON.stringify({ rev: patch.rev, doc: patch.doc, title: patch.title, format: patch.format, slideCount: patch.slideCount } satisfies Pending));
     } catch {
       // storage full or blocked. The normal autosave is all there is.
     }
+  },
+
+  async duplicateProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    const now = new Date().toISOString();
+    const copy: StoredProject = { ...structuredClone(p), id: uid(), title: `${p.title.slice(0, 74)} copy`, rev: 0, createdAt: now, updatedAt: now, ownerId: me.id };
+    await set(`project:${copy.id}`, copy, store);
+    return { id: copy.id, title: copy.title, format: copy.format, slideCount: copy.slideCount, updatedAt: copy.updatedAt };
+  },
+
+  async deleteProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    await set(`project:${id}`, { ...p, deletedAt: new Date().toISOString() }, store);
+  },
+
+  async restoreProject(id) {
+    const me = await requireUser();
+    const p = await get<StoredProject>(`project:${id}`, store);
+    if (!p?.deletedAt || (p.ownerId && p.ownerId !== me.id) || Date.now() - Date.parse(p.deletedAt) > 30 * 864e5) throw new DataError("NOT_FOUND", "That project can't be restored.");
+    const { deletedAt: _gone, ...kept } = p;
+    await set(`project:${id}`, kept, store);
+  },
+
+  async renameProject(id, title) {
+    const { rev } = await fake.getProject(id);
+    await fake.saveProject(id, { rev, title });
   },
 
   async saveProject(id, patch) {
     const me = await requireUser();
     const key = `project:${id}`;
     const p = await get<StoredProject>(key, store);
-    if (!p || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
+    if (!p || p.deletedAt || (p.ownerId && p.ownerId !== me.id)) throw new DataError("NOT_FOUND", "That project doesn't exist.");
     // Compare and set. The real API does this in one conditional UPDATE.
     if (p.rev !== patch.rev) throw new DataError("REV_CONFLICT", "This project was changed somewhere else.");
     const next: StoredProject = { ...p };
@@ -192,10 +248,7 @@ const fake: DataLayer = {
     if (patch.title !== undefined) next.title = patch.title.trim() || "Untitled";
     if (patch.format !== undefined) next.format = patch.format;
     if (patch.slideCount !== undefined) {
-      const me = await requireUser();
-      if (patch.slideCount > p.slideCount && patch.slideCount > me.maxSlides) {
-        throw new DataError("LIMIT_REACHED", `Your plan allows up to ${me.maxSlides} slides.`);
-      }
+      if (!Number.isInteger(patch.slideCount) || patch.slideCount < 1 || patch.slideCount > MAX_SLIDES) throw new DataError("INVALID", `Slide count must be from 1 to ${MAX_SLIDES}.`);
       next.slideCount = patch.slideCount;
     }
     next.rev = p.rev + 1;
@@ -242,7 +295,3 @@ const fake: DataLayer = {
 
 export default fake;
 
-/** Media records are needed to rebuild element names and sizes when a project reopens. */
-export async function getMediaRecord(id: string): Promise<MediaRecord | undefined> {
-  return (await get<StoredMedia>(`media:${id}`, store))?.record;
-}

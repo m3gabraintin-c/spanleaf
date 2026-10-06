@@ -74,6 +74,7 @@ test.describe("F01 first-time user makes a carousel", () => {
     await page.goto("/app");
     await expect(page.getByText("Secret trip")).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await page.waitForURL("**/");
     await page.goBack();
     await page.waitForTimeout(800);
@@ -93,7 +94,7 @@ test.describe("F01 first-time user makes a carousel", () => {
 
   test("F01-E7 stub screens render and link back", async ({ page }) => {
     await signIn(page);
-    for (const path of ["/onboarding", "/upgrade", "/app/templates"]) {
+    for (const path of ["/onboarding", "/app/templates"]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await page.getByRole("link", { name: /Back to projects|New project/ }).first().click();
@@ -106,15 +107,14 @@ test.describe("F01 first-time user makes a carousel", () => {
     await newProject(page, { name: "Alice private" });
     await page.goto("/app");
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await signIn(page, "bob@example.test");
     await expect(page.getByRole("heading", { name: "Nothing here yet" })).toBeVisible({ timeout: 5000 });
   });
 
-  test("F01-A1 accessibility: home, pricing, sign-in, projects, new project", async ({ page }) => {
+  test("F01-A1 accessibility: home, sign-in, projects, new project", async ({ page }) => {
     await page.goto("/");
     await axeClean(page, "S01");
-    await page.goto("/pricing");
-    await axeClean(page, "S02");
     await page.goto("/login");
     await axeClean(page, "S19");
     await signIn(page);

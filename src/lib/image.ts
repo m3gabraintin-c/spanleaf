@@ -1,7 +1,7 @@
 import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_EDGE, MAX_UPLOAD_BYTES, THUMB_EDGE } from "./formats";
 import { DataError } from "@/data/types";
 
-export interface PreparedImage {
+interface PreparedImage {
   full: Blob;
   thumb: Blob;
   width: number;
