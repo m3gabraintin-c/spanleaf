@@ -38,6 +38,9 @@ export const exportSlides = async (
   const saved = { sx: stage.scaleX(), sy: stage.scaleY(), x: stage.x(), y: stage.y() };
   stage.scale({ x: 1, y: 1 });
   stage.position({ x: 0, y: 0 });
+  // Empty photo frames are for editing only, so they are left out of the pictures.
+  const frames = content.find(".placeholder");
+  frames.forEach((n) => n.visible(false));
   try {
     const base = slug(title);
     const width = String(design.slideCount).length;
@@ -63,6 +66,7 @@ export const exportSlides = async (
       download(new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: "application/zip" }), `${base}.zip`);
     }
   } finally {
+    frames.forEach((n) => n.visible(true));
     stage.scale({ x: saved.sx, y: saved.sy });
     stage.position({ x: saved.x, y: saved.y });
     stage.batchDraw();

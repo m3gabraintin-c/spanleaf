@@ -8,6 +8,8 @@ import { Input } from "../components/Input";
 import { Skeleton } from "../components/Skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/Select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/Dialog";
+import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
+import { TEMPLATES } from "../helpers/templates";
 import { FORMATS, FORMAT_KEYS, FormatKey, MAX_SLIDES, Project, clampSlides } from "../helpers/carouselModel";
 import {
   createProject,
@@ -69,9 +71,12 @@ export default function ProjectsPage() {
         <Link to="/" className={styles.wordmark}>
           Spanleaf
         </Link>
-        <Button onClick={() => setMaking(true)}>
-          <Plus size={16} /> New carousel
-        </Button>
+        <div className={styles.headerActions}>
+          <ThemeModeSwitch />
+          <Button onClick={() => setMaking(true)}>
+            <Plus size={16} /> New carousel
+          </Button>
+        </div>
       </header>
 
       <main className={styles.main}>
@@ -132,8 +137,8 @@ export default function ProjectsPage() {
       <NewDialog
         open={making}
         onOpenChange={setMaking}
-        onCreate={async (title, format, slides) => {
-          const p = await createProject(title, format, slides);
+        onCreate={async (title, format, slides, template) => {
+          const p = await createProject(title, format, slides, template);
           navigate(`/app/project/${p.id}`);
         }}
       />
@@ -153,17 +158,18 @@ function NewDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onCreate: (title: string, format: FormatKey, slides: number) => Promise<void>;
+  onCreate: (title: string, format: FormatKey, slides: number, template?: string) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [format, setFormat] = useState<FormatKey>("portrait_4_5");
   const [slides, setSlides] = useState(3);
+  const [template, setTemplate] = useState("blank");
   const [busy, setBusy] = useState(false);
 
   const create = async () => {
     setBusy(true);
     try {
-      await onCreate(name, format, slides);
+      await onCreate(name, format, slides, template === "blank" ? undefined : template);
     } catch {
       toast.error("The project couldn't be created.");
       setBusy(false);
@@ -199,8 +205,25 @@ function NewDialog({
           </div>
           <label className={styles.field}>
             <span>Number of slides (1 to {MAX_SLIDES})</span>
-            <Input type="number" inputMode="numeric" min={1} max={MAX_SLIDES} value={slides} onChange={(e) => setSlides(clampSlides(Number(e.target.value)))} />
+            <Input type="number" inputMode="numeric" min={1} max={MAX_SLIDES} value={slides} disabled={template !== "blank"} onChange={(e) => setSlides(clampSlides(Number(e.target.value)))} />
           </label>
+          <div className={styles.field}>
+            <span id="template-label">Start from</span>
+            <Select value={template} onValueChange={setTemplate}>
+              <SelectTrigger aria-labelledby="template-label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="blank">Blank</SelectItem>
+                {TEMPLATES.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name} - {t.blurb}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {template !== "blank" && <small className={styles.note}>A template starts with empty frames. Select a frame and add a photo, or add several photos and they fill the frames in order. The number of slides comes from the template.</small>}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

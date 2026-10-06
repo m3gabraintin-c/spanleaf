@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { Button } from "../components/Button";
+import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import styles from "./_index.module.css";
 
 const FEATURES = [
@@ -29,9 +30,12 @@ export default function HomePage() {
 
       <header className={styles.header}>
         <span className={styles.wordmark}>Spanleaf</span>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/app">Open your projects</Link>
-        </Button>
+        <div className={styles.headerActions}>
+          <ThemeModeSwitch />
+          <Button asChild variant="outline" size="sm">
+            <Link to="/app">Open your projects</Link>
+          </Button>
+        </div>
       </header>
 
       <main>

@@ -12,7 +12,7 @@ import styles from "./EditorPanels.module.css";
 type Patch = (patch: Partial<Layer>, key?: string) => void;
 
 /** Crop, frame and adjust, for the selected photo. */
-export const PhotoStylePanel = ({ layer, onPatch }: { layer: Layer; onPatch: Patch }) => {
+export const PhotoStylePanel = ({ layer, onPatch, onFlip }: { layer: Layer; onPatch: Patch; onFlip: (axis: "horizontal" | "vertical") => void }) => {
   const crop = layer.crop ?? { zoom: 1, x: 0.5, y: 0.5 };
   const adj = layer.adjust ?? NO_ADJUST;
   const off = layer.locked;
@@ -35,6 +35,14 @@ export const PhotoStylePanel = ({ layer, onPatch }: { layer: Layer; onPatch: Pat
       <Button variant="outline" size="sm" disabled={off} onClick={() => onPatch({ crop: undefined })}>
         Fill the frame
       </Button>
+      <div className={styles.chips} role="group" aria-label="Flip">
+        <Button variant="outline" size="sm" disabled={off} onClick={() => onFlip("horizontal")}>
+          Flip left to right
+        </Button>
+        <Button variant="outline" size="sm" disabled={off} onClick={() => onFlip("vertical")}>
+          Flip top to bottom
+        </Button>
+      </div>
 
       <h3 className={styles.head}>Frame</h3>
       <div className={styles.field}>

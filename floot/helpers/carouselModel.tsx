@@ -54,6 +54,11 @@ export type Layer = {
   color?: string;
   align?: "left" | "center" | "right";
   bold?: boolean;
+  /** Text effects. */
+  outline?: { color: string; width: number } | null;
+  textShadow?: boolean;
+  letterSpacing?: number;
+  lineHeight?: number;
 };
 
 export type Design = {
@@ -154,6 +159,28 @@ export const boundsOf = (l: Pick<Layer, "x" | "y" | "w" | "h" | "rotation">) => 
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Turns a layer by deg about its own middle, so it stays where it is. Layers turn about their top-left corner, so
+ * the corner has to move to make up for it. The angle is kept between -180 and 180.
+ */
+export const rotatedBy = (l: Pick<Layer, "x" | "y" | "w" | "h" | "rotation">, deg: number) => {
+  const at = (rot: number) => {
+    const a = (rot * Math.PI) / 180;
+    return { cos: Math.cos(a), sin: Math.sin(a) };
+  };
+  const before = at(l.rotation);
+  const cx = l.x + (l.w / 2) * before.cos - (l.h / 2) * before.sin;
+  const cy = l.y + (l.w / 2) * before.sin + (l.h / 2) * before.cos;
+  let rotation = (((l.rotation + deg + 180) % 360) + 360) % 360 - 180;
+  if (rotation === -180) rotation = 180;
+  const after = at(rotation);
+  return {
+    rotation: round2(rotation),
+    x: round2(cx - (l.w / 2) * after.cos + (l.h / 2) * after.sin),
+    y: round2(cy - (l.w / 2) * after.sin - (l.h / 2) * after.cos),
+  };
+};
 
 export const alignedPosition = (
   l: Pick<Layer, "x" | "y" | "w" | "h" | "rotation">,

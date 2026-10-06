@@ -1,5 +1,6 @@
 import { del, get, keys, set } from "idb-keyval";
 import { Project, newDesign, uid, FormatKey } from "./carouselModel";
+import { buildTemplate } from "./templates";
 
 /**
  * Projects live in this browser (IndexedDB). Deleting moves a project to the bin,
@@ -37,6 +38,7 @@ export const createProject = async (
   title: string,
   format: FormatKey,
   slideCount: number,
+  template?: string,
 ): Promise<Project> => {
   const now = Date.now();
   const p: Project = {
@@ -45,7 +47,7 @@ export const createProject = async (
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    design: newDesign(format, slideCount),
+    design: (template && buildTemplate(template, format)) || newDesign(format, slideCount),
   };
   await set(KEY(p.id), p);
   return p;

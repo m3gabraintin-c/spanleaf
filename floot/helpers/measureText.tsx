@@ -7,12 +7,16 @@ export const measureText = (t: {
   fontSize?: number;
   w: number;
   bold?: boolean;
+  letterSpacing?: number;
+  lineHeight?: number;
 }): number => {
   const node = new Konva.Text({
     text: t.text || " ",
     fontFamily: t.fontFamily || "Inter Tight",
     fontSize: t.fontSize || 64,
     fontStyle: t.bold ? "bold" : "normal",
+    letterSpacing: t.letterSpacing ?? 0,
+    lineHeight: t.lineHeight ?? 1,
     width: t.w,
   });
   const h = node.height();

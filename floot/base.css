@@ -84,4 +84,48 @@
 }
 
 .dark {
+  --background: #121613;
+  --foreground: #ece6da;
+
+  --surface: #1a1f1b;
+  --surface-foreground: #ece6da;
+  --sidebar: #171c18;
+  --sidebar-foreground: #ece6da;
+  --card: #1e241f;
+  --card-foreground: #ece6da;
+  --popup: #1e241f;
+  --popup-foreground: #ece6da;
+
+  --primary: #4fb58a;
+  --primary-foreground: #0e1a13;
+  --secondary: #2a312b;
+  --secondary-foreground: #ece6da;
+  --accent: #213a2e;
+  --accent-foreground: #c3e8d6;
+  --muted: #222922;
+  --muted-foreground: #9ba59c;
+
+  --success: #55b878;
+  --success-foreground: #0e1a13;
+  --error: #ef6b60;
+  --error-foreground: #1a0f0e;
+  --warning: #e0a73a;
+  --warning-foreground: #1a1408;
+  --info: #5aa6d1;
+  --info-foreground: #0b1a24;
+  --info-hover: #74b6dc;
+  --info-active: #8cc3e4;
+
+  --border: #323b33;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --shadow-focus: 0 0 0 3px rgba(79, 181, 138, 0.35);
+
+  --chart-color-1: #4fb58a;
+  --chart-color-2: #e0a73a;
+  --chart-color-3: #5aa6d1;
+  --chart-color-4: #ef6b60;
+  --chart-color-5: #a897d8;
 }

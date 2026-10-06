@@ -6,6 +6,7 @@ import { measureText } from "../helpers/measureText";
 import { cropRect, isAdjusted } from "../helpers/photoStyle";
 import { Guide, snapBox } from "../helpers/snapping";
 import { PenMode, Point, localPoints, strokeHit, strokeLayer, tracePath } from "../helpers/strokes";
+import { useThemeMode } from "../helpers/themeMode";
 import styles from "./CarouselCanvas.module.css";
 
 const PAD = 28;
@@ -53,6 +54,9 @@ type Props = {
  * light: the page scrolls, and the stage moves the other way to match.
  */
 export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase }: Props) => {
+  // Dark or light changes the colours of the editing aids. Exports never include them.
+  const { mode } = useThemeMode();
+  const dark = mode === "dark" || (mode === "auto" && typeof document !== "undefined" && document.body.classList.contains("dark"));
   const scroller = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ w: 0, h: 0 });
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -252,9 +256,9 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
               </KLayer>
               {/* Editing aids: never exported. */}
               <KLayer listening={!drawing}>
-                <Rect width={total} height={height} stroke="#d6ceba" strokeWidth={1 / scale} listening={false} />
+                <Rect width={total} height={height} stroke={dark ? "#4a554b" : "#d6ceba"} strokeWidth={1 / scale} listening={false} />
                 {dividers.map((i) => (
-                  <Line key={i} points={[i * SLIDE_WIDTH, 0, i * SLIDE_WIDTH, height]} stroke="#1d211e" opacity={0.35} dash={[10 / scale, 8 / scale]} strokeWidth={1.5 / scale} listening={false} />
+                  <Line key={i} points={[i * SLIDE_WIDTH, 0, i * SLIDE_WIDTH, height]} stroke={dark ? "#ece6da" : "#1d211e"} opacity={0.4} dash={[10 / scale, 8 / scale]} strokeWidth={1.5 / scale} listening={false} />
                 ))}
                 {guides.map((g, i) => (
                   <Line
@@ -272,9 +276,9 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
                   keepRatio={!textSelected}
                   enabledAnchors={textSelected ? ["middle-left", "middle-right"] : ["top-left", "top-right", "bottom-left", "bottom-right"]}
                   anchorSize={Math.max(10, 12 / scale)}
-                  borderStroke="#1f6f54"
-                  anchorStroke="#1f6f54"
-                  anchorFill="#fbf9f4"
+                  borderStroke={dark ? "#4fb58a" : "#1f6f54"}
+                  anchorStroke={dark ? "#4fb58a" : "#1f6f54"}
+                  anchorFill={dark ? "#1e241f" : "#fbf9f4"}
                   boundBoxFunc={(oldBox, box) => (Math.abs(box.width) < 24 || Math.abs(box.height) < 8 ? oldBox : box)}
                 />
               </KLayer>
@@ -299,7 +303,7 @@ type NodeProps = {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
-  const src = layer.type === "sticker" ? layer.src : layer.src;
+  const src = layer.src;
   const img = useImage(src);
   const ref = useRef<Konva.Image | null>(null);
   const crop = img && layer.type === "image" ? cropRect(layer.natural?.w ?? img.naturalWidth, layer.natural?.h ?? img.naturalHeight, layer.w, layer.h, layer.crop) : undefined;
@@ -321,6 +325,68 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
     }
     n.getLayer()?.batchDraw();
   }, [img, adj?.brightness, adj?.contrast, adj?.saturation, layer.w, layer.h, layer.crop?.zoom, layer.crop?.x, layer.crop?.y, layer.shadow, layer.radius, layer.border?.width]);
+
+  // A photo layer with no picture is an empty frame, waiting for a photo. It is never exported.
+  if (!layer.src && layer.type === "image") {
+    return (
+      <Shape
+        name="placeholder"
+        ref={(n) => {
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        x={layer.x}
+        y={layer.y}
+        width={layer.w}
+        height={layer.h}
+        rotation={layer.rotation}
+        fill="#000000"
+        draggable={!layer.locked && !disabled}
+        sceneFunc={(ctx) => {
+          const c = ctx._context;
+          c.save();
+          c.fillStyle = "rgba(128, 140, 130, 0.14)";
+          c.fillRect(0, 0, layer.w, layer.h);
+          c.strokeStyle = "#4fa27f";
+          c.lineWidth = 3;
+          c.setLineDash([16, 10]);
+          c.strokeRect(1.5, 1.5, layer.w - 3, layer.h - 3);
+          c.setLineDash([]);
+          const s = Math.min(layer.w, layer.h) * 0.12;
+          c.lineWidth = 6;
+          c.lineCap = "round";
+          c.beginPath();
+          c.moveTo(layer.w / 2 - s, layer.h / 2);
+          c.lineTo(layer.w / 2 + s, layer.h / 2);
+          c.moveTo(layer.w / 2, layer.h / 2 - s);
+          c.lineTo(layer.w / 2, layer.h / 2 + s);
+          c.stroke();
+          c.restore();
+        }}
+        hitFunc={(ctx, shape) => {
+          ctx.beginPath();
+          ctx.rect(0, 0, layer.w, layer.h);
+          ctx.closePath();
+          ctx.fillShape(shape);
+        }}
+        onMouseDown={() => !disabled && onSelect(layer.id)}
+        onTouchStart={() => !disabled && onSelect(layer.id)}
+        onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+        onDragEnd={(e) => {
+          onDragEnd();
+          onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+        }}
+        onTransformEnd={(e) => {
+          const n = e.target;
+          const sx = n.scaleX();
+          const sy = n.scaleY();
+          n.scaleX(1);
+          n.scaleY(1);
+          onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.max(24, Math.round(n.width() * sx)), h: Math.max(24, Math.round(n.height() * sy)), rotation: r2(n.rotation()) });
+        }}
+      />
+    );
+  }
 
   return (
     <KImage
@@ -377,6 +443,16 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     fontStyle={layer.bold ? "bold" : "normal"}
     fill={layer.color || "#1d211e"}
     align={layer.align || "left"}
+    letterSpacing={layer.letterSpacing ?? 0}
+    lineHeight={layer.lineHeight ?? 1}
+    stroke={layer.outline?.color}
+    strokeWidth={layer.outline?.width ?? 0}
+    fillAfterStrokeEnabled
+    shadowEnabled={!!layer.textShadow}
+    shadowColor="#000000"
+    shadowBlur={14}
+    shadowOffsetY={5}
+    shadowOpacity={0.45}
     opacity={layer.opacity ?? 1}
     x={layer.x}
     y={layer.y}

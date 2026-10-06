@@ -21,6 +21,12 @@
   color: var(--primary);
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
 .hero {
   max-width: 48rem;
   margin: 0 auto;

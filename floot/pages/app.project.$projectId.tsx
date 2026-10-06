@@ -17,6 +17,8 @@ import {
   Lock,
   Plus,
   Redo2,
+  RotateCcw,
+  RotateCw,
   Trash2,
   Type,
   Undo2,
@@ -31,6 +33,7 @@ import { Slider } from "../components/Slider";
 import { Skeleton } from "../components/Skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/Tabs";
+import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import { CarouselCanvas } from "../components/CarouselCanvas";
 import type { Pen } from "../components/CarouselCanvas";
 import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel } from "../components/EditorPanels";
@@ -49,6 +52,7 @@ import {
   Project,
   SLIDE_WIDTH,
   slideOf,
+  rotatedBy,
   uid,
 } from "../helpers/carouselModel";
 import { getProject, saveProject } from "../helpers/projectStorage";
@@ -56,6 +60,7 @@ import { useEditorState } from "../helpers/useEditorState";
 import { preparePicture } from "../helpers/preparePicture";
 import { measureText } from "../helpers/measureText";
 import { exportSlides } from "../helpers/exportSlides";
+import { flipPicture } from "../helpers/flipPicture";
 import styles from "./app.project.$projectId.module.css";
 
 const ALIGN_ICONS: Record<Alignment, { label: string; Icon: typeof AlignStartVertical }> = {
@@ -120,6 +125,8 @@ function Editor({ project }: { project: Project }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const contentRef = useRef<Konva.Layer | null>(null);
   const files = useRef<HTMLInputElement>(null);
+  /** The empty frame the next chosen photo goes into, when one was picked. */
+  const fillFor = useRef<string | null>(null);
   const latest = useRef({ design: ed.design, title });
   latest.current = { design: ed.design, title };
   const first = useRef(true);
@@ -190,10 +197,20 @@ function Editor({ project }: { project: Project }) {
     if (!list || list.length === 0) return;
     const chosen = Array.from(list).slice(0, 30);
     if (list.length > 30) toast.message("Added the first 30 photos.");
+    // Photos go into empty frames first (the picked one, then the rest from left to right), then onto the slide.
+    const target = fillFor.current;
+    fillFor.current = null;
+    const empty = design.layers.filter((l) => l.type === "image" && !l.src).sort((a, b) => a.x - b.x).map((l) => l.id);
+    const queue = target ? [target, ...empty.filter((id) => id !== target)] : empty;
     let at = current;
     for (const file of chosen) {
       try {
         const pic = await preparePicture(file);
+        const frame = queue.shift();
+        if (frame) {
+          ed.patchLayer(frame, { src: pic.src, natural: { w: pic.width, h: pic.height }, name: pic.name, crop: undefined });
+          continue;
+        }
         const k = Math.min((SLIDE_WIDTH * 0.8) / pic.width, (height * 0.8) / pic.height);
         const w = Math.round(pic.width * k);
         const h = Math.round(pic.height * k);
@@ -264,6 +281,17 @@ function Editor({ project }: { project: Project }) {
     });
   };
 
+  const flip = async (axis: "horizontal" | "vertical") => {
+    if (!selected?.src) return;
+    try {
+      const src = await flipPicture(selected.src, axis);
+      const c = selected.crop;
+      ed.patchLayer(selected.id, { src, crop: c ? (axis === "horizontal" ? { ...c, x: 1 - c.x } : { ...c, y: 1 - c.y }) : undefined });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The picture couldn't be flipped.");
+    }
+  };
+
   const addStroke = (layer: Layer) => {
     if (design.layers.length >= MAX_LAYERS) return void toast.error(`This project has reached its limit of ${MAX_LAYERS} layers.`);
     ed.addLayer(layer);
@@ -306,6 +334,7 @@ function Editor({ project }: { project: Project }) {
         </Button>
         <Input aria-label="Project name" className={styles.titleInput} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
         <div className={styles.headerRight}>
+          <ThemeModeSwitch />
           <Button variant="ghost" size="icon-sm" aria-label="Undo" title="Undo" disabled={!ed.canUndo} onClick={ed.undo}>
             <Undo2 size={16} />
           </Button>
@@ -354,13 +383,31 @@ function Editor({ project }: { project: Project }) {
             <TabsContent value="photos" className={styles.tab}>
               <p className={styles.hint}>JPEG, PNG or WebP, up to 25 MB each. Photos land on the slide in view. Drag one across a slide edge and it exports as two halves.</p>
               <input ref={files} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="Choose photos" onChange={(e) => void addPhotos(e.target.files)} />
-              <Button onClick={() => files.current?.click()}>
+              <Button
+                onClick={() => {
+                  fillFor.current = null;
+                  files.current?.click();
+                }}
+              >
                 <ImagePlus size={16} /> Add photos
               </Button>
-              {selected?.type === "image" ? (
-                <PhotoStylePanel layer={selected} onPatch={(p, k) => ed.patchLayer(selected.id, p, k)} />
+              {selected?.type === "image" && !selected.src ? (
+                <>
+                  <p className={styles.hint}>This is an empty frame. Choose a photo to put in it. It is left out of the exported pictures until it has a photo.</p>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      fillFor.current = selected.id;
+                      files.current?.click();
+                    }}
+                  >
+                    <ImagePlus size={16} /> Put a photo in this frame
+                  </Button>
+                </>
+              ) : selected?.type === "image" ? (
+                <PhotoStylePanel layer={selected} onPatch={(p, k) => ed.patchLayer(selected.id, p, k)} onFlip={(a) => void flip(a)} />
               ) : (
-                <p className={styles.hint}>Click a photo on the slides to crop it, frame it, or change its colours.</p>
+                <p className={styles.hint}>Click a photo on the slides to crop it, flip it, frame it, or change its colours.</p>
               )}
             </TabsContent>
 
@@ -432,6 +479,35 @@ function Editor({ project }: { project: Project }) {
                         {a[0].toUpperCase() + a.slice(1)}
                       </Button>
                     ))}
+                  </div>
+                  <h3 className={styles.subhead}>Effects</h3>
+                  <div className={styles.field}>
+                    <span id="ls-label">Letter spacing {selected.letterSpacing ?? 0}</span>
+                    <Slider aria-labelledby="ls-label" min={-5} max={40} value={[selected.letterSpacing ?? 0]} disabled={selected.locked} onValueChange={([v]) => patchText({ letterSpacing: v }, "spacing")} />
+                  </div>
+                  <div className={styles.field}>
+                    <span id="lh-label">Line height {(selected.lineHeight ?? 1).toFixed(2)}</span>
+                    <Slider aria-labelledby="lh-label" min={0.8} max={2} step={0.05} value={[selected.lineHeight ?? 1]} disabled={selected.locked} onValueChange={([v]) => patchText({ lineHeight: v }, "leading")} />
+                  </div>
+                  <div className={styles.fieldRow}>
+                    <span id="out-label">Outline</span>
+                    <Switch aria-labelledby="out-label" checked={!!selected.outline} disabled={selected.locked} onCheckedChange={(on) => patchText({ outline: on ? { color: "#ffffff", width: 6 } : null })} />
+                  </div>
+                  {selected.outline && (
+                    <>
+                      <div className={styles.field}>
+                        <span id="ow-label">Outline width {selected.outline.width}</span>
+                        <Slider aria-labelledby="ow-label" min={1} max={30} value={[selected.outline.width]} disabled={selected.locked} onValueChange={([v]) => patchText({ outline: { ...selected.outline!, width: v } }, "outline")} />
+                      </div>
+                      <label className={styles.fieldRow}>
+                        <span>Outline colour</span>
+                        <Input type="color" className={styles.colour} value={selected.outline.color} disabled={selected.locked} onChange={(e) => patchText({ outline: { ...selected.outline!, color: e.target.value } }, "outlinecolour")} />
+                      </label>
+                    </>
+                  )}
+                  <div className={styles.fieldRow}>
+                    <span id="tsh-label">Shadow</span>
+                    <Switch aria-labelledby="tsh-label" checked={!!selected.textShadow} disabled={selected.locked} onCheckedChange={(on) => patchText({ textShadow: on })} />
                   </div>
                 </div>
               ) : (
@@ -590,6 +666,15 @@ function Editor({ project }: { project: Project }) {
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => ed.reorder(selected.id, "backward")}>
                       Backward
+                    </Button>
+                  </div>
+                  <h3 className={styles.subhead}>Turn</h3>
+                  <div className={styles.grid2}>
+                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, -90))}>
+                      <RotateCcw size={14} /> Left 90°
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, 90))}>
+                      <RotateCw size={14} /> Right 90°
                     </Button>
                   </div>
                   <div className={styles.grid2}>
