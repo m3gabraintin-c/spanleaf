@@ -1,0 +1,21 @@
+.scroller {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--muted);
+  overscroll-behavior-x: contain;
+}
+
+.spacer {
+  position: relative;
+}
+
+.stick {
+  position: sticky;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+}
