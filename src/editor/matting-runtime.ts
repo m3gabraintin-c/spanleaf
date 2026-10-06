@@ -12,7 +12,7 @@ interface SessionLike {
 }
 
 /** Finds the object in a photo: gives the network's 320 by 320 answer, one number per square, higher where the object is. */
-export type Matter = (data: Uint8ClampedArray, w: number, h: number) => Promise<ArrayLike<number>>;
+type Matter = (data: Uint8ClampedArray, w: number, h: number) => Promise<ArrayLike<number>>;
 
 export async function createMatter(ort: OrtLike, model: Uint8Array): Promise<Matter> {
   const session = await ort.InferenceSession.create(model, { executionProviders: ["wasm"] });

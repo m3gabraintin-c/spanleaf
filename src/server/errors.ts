@@ -1,6 +1,6 @@
 import type { DataErrorCode } from "@/data/types";
 
-export type ApiErrorCode = DataErrorCode | "BAD_REQUEST";
+type ApiErrorCode = DataErrorCode | "BAD_REQUEST";
 
 const STATUS: Record<ApiErrorCode, number> = {
   UNAUTHENTICATED: 401,

@@ -2,7 +2,7 @@
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
 import { cn } from "./cn";
 
-export interface SegmentedOption<T extends string> {
+interface SegmentedOption<T extends string> {
   value: T;
   label: string;
 }

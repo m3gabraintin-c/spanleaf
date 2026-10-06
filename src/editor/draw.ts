@@ -90,7 +90,7 @@ export function drawPattern(c: Ctx, p: Pattern, width: number, height: number) {
 }
 
 /** The parts of a canvas context needed to lay out a line. Konva's own context has them too, so hit testing can share this. */
-export type PathCtx = Pick<CanvasRenderingContext2D, "beginPath" | "moveTo" | "lineTo" | "quadraticCurveTo">;
+type PathCtx = Pick<CanvasRenderingContext2D, "beginPath" | "moveTo" | "lineTo" | "quadraticCurveTo">;
 
 /** Lays out a smooth line through the points: curves that pass through the middle of each pair. One point makes a dot. */
 export function tracePath(c: PathCtx, pts: readonly Point[]) {

@@ -63,6 +63,5 @@ export const PatternSchema = z.object({
 });
 
 export type Adjust = z.infer<typeof AdjustSchema>;
-export type Stroke = z.infer<typeof StrokeSchema>;
 export type Mask = z.infer<typeof MaskSchema>;
 export type Pattern = z.infer<typeof PatternSchema>;

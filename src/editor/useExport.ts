@@ -4,7 +4,7 @@ import { waitForFonts } from "@/lib/fonts";
 import { downloadBlob, renderSlides, slugify, waitForImages, zipSlides } from "./export";
 import { useEditor } from "./store";
 
-export type ExportState = "idle" | "rendering" | "done" | "failed";
+type ExportState = "idle" | "rendering" | "done" | "failed";
 
 export function useExport() {
   const [state, setState] = useState<ExportState>("idle");

@@ -4,7 +4,7 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { cn } from "./cn";
 
-export type ToastTone = "success" | "error";
+type ToastTone = "success" | "error";
 interface ToastItem {
   id: number;
   tone: ToastTone;
@@ -12,7 +12,7 @@ interface ToastItem {
 }
 
 /** Presentational card, reused by the design page. */
-export function ToastCard({ tone, message }: { tone: ToastTone; message: string }) {
+function ToastCard({ tone, message }: { tone: ToastTone; message: string }) {
   const Icon = tone === "success" ? CheckCircle2 : AlertCircle;
   return (
     <div className="flex items-center gap-3 rounded-md border border-line bg-page px-4 py-3 text-sm text-ink shadow-pop">

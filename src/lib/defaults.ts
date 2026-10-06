@@ -3,7 +3,7 @@ import { uid } from "./doc";
 import { STICKERS, stickerAsset } from "./stickers";
 
 /** Slide content colours are user content, not interface colours, so they are plain values here. */
-export const DEFAULT_TEXT: TextProps = { value: "Your text", font: "inter", size: 96, color: "#111111", align: "center", bold: true };
+const DEFAULT_TEXT: TextProps = { value: "Your text", font: "inter", size: 96, color: "#111111", align: "center", bold: true };
 
 export function newTextElement(centreX: number, centreY: number, slideWidth: number): Element {
   const w = Math.round(slideWidth * 0.7);

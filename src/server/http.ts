@@ -9,7 +9,7 @@ import { rateLimit } from "./rateLimit";
 
 const MAX_BODY = 3 * 1024 * 1024;
 
-export interface UserCtx<I> {
+interface UserCtx<I> {
   user: SessionUser;
   input: I;
   db: Db;
@@ -22,7 +22,7 @@ type RouteCtx = { params?: Promise<Record<string, string>> };
 const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
 
-export function errorResponse(e: unknown, route: string, requestId: string) {
+function errorResponse(e: unknown, route: string, requestId: string) {
   if (e instanceof ApiError) {
     return json({ error: { code: e.code, message: e.message } }, e.status, e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {});
   }
@@ -57,7 +57,7 @@ async function readInput(req: Request, schema: z.ZodTypeAny | undefined) {
   return parsed.data;
 }
 
-export interface RouteDeps {
+interface RouteDeps {
   getUser: () => Promise<SessionUser | null>;
   getDb: () => Db;
 }

@@ -1,7 +1,7 @@
 "use client";
 import { cn } from "./cn";
 
-export type ProgressState = "running" | "done" | "failed";
+type ProgressState = "running" | "done" | "failed";
 
 export function ProgressBar({
   label,

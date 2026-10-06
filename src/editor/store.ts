@@ -9,9 +9,9 @@ import { MAX_SLIDES, type FormatKey } from "@/lib/formats";
 import { duplicateSlide, insertSlide, moveSlide, removeSlide, slideOf } from "@/lib/slides";
 import type { MediaUrls, Project } from "@/data";
 
-export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
+type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "conflict" | "signed_out";
 export type ToolKey = "media" | "themes" | "crop" | "size" | "text" | "stickers" | "frames" | "draw" | "cutout" | "slides" | "background" | "adjust" | "layers";
-export type LayerMove = "forward" | "backward" | "front" | "back";
+type LayerMove = "forward" | "backward" | "front" | "back";
 
 const HISTORY_LIMIT = 100;
 /** Edits with the same key that come this close together count as one step for undo. */

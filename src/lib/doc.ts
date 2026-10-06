@@ -8,7 +8,7 @@ import { ComposeMetaSchema } from "./plan";
  * before rotation, and rotation (degrees) turns the element about that corner.
  * Array order is z-order, bottom first. Slides are never stored. They are cut at export.
  */
-export const TextSchema = z.object({
+const TextSchema = z.object({
   value: z.string().max(2000),
   /** A font id from fonts.generated.ts, such as "inter". */
   font: z.string().min(1).max(60),
@@ -32,7 +32,7 @@ const CropSchema = z
   })
   .refine((c) => c.x + c.w <= 1.0001 && c.y + c.h <= 1.0001, "The crop runs past the edge of the photo.");
 
-export const ElementSchema = z.object({
+const ElementSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["image", "video", "text", "sticker", "frame", "drawing"]),
   x: z.number(),

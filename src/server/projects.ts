@@ -24,7 +24,7 @@ const summary = (r: Pick<Row, "id" | "title" | "format" | "slide_count" | "updat
 });
 const full = (r: Row): Project => ({ ...summary(r), doc: r.doc, rev: r.rev });
 
-export const requireId = (id: string) => {
+const requireId = (id: string) => {
   if (!isUuid(id)) throw new ApiError("NOT_FOUND", "That project doesn't exist.");
   return id;
 };
@@ -91,7 +91,7 @@ export async function getProject(db: Db, userId: string, id: string): Promise<Pr
   return full(row);
 }
 
-export interface PatchInput {
+interface PatchInput {
   rev: number;
   doc?: Doc;
   title?: string;
