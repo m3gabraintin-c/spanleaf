@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600&display=swap');
+
+:root {
+  /* Overlay layers */
+  --z-overlay: 400;
+
+  --z-spotlight: 1000; /* Tutorial spotlights/guided help */
+
+  /* System layers */
+  --z-critical: 2000; /* Critical system notifications */
+
+  /* spacing */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
+}
+
+:root {
+  --background: #f6f2ea;
+  --foreground: #1d211e;
+
+  --surface: #ece6da;
+  --surface-foreground: #1d211e;
+  --sidebar: #efe9dd;
+  --sidebar-foreground: #1d211e;
+  --card: #fbf9f4;
+  --card-foreground: #1d211e;
+  --popup: #fbf9f4;
+  --popup-foreground: #1d211e;
+
+  --primary: #1f6f54;
+  --primary-foreground: #f6f2ea;
+  --secondary: #e2dac9;
+  --secondary-foreground: #1d211e;
+  --accent: #dbe8e0;
+  --accent-foreground: #164d3a;
+  --muted: #e8e1d3;
+  --muted-foreground: #5e655f;
+
+  --success: #2f7d4f;
+  --success-foreground: #f6f2ea;
+  --error: #b3392f;
+  --error-foreground: #fbf9f4;
+  --warning: #b7791f;
+  --warning-foreground: #1d211e;
+  --info: #2c6a8f;
+  --info-foreground: #f6f2ea;
+  --info-hover: #245a79;
+  --info-active: #1c4a64;
+
+  --border: #d6ceba;
+
+  --font-family-base: 'Inter Tight', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-family-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-family-monospace: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-family-cursive: 'Fraunces', Georgia, serif;
+
+  --shadow: 0 1px 2px rgba(29, 33, 30, 0.06);
+  --shadow-md: 0 2px 8px rgba(29, 33, 30, 0.08);
+  --shadow-lg: 0 10px 30px rgba(29, 33, 30, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(31, 111, 84, 0.28);
+
+  --radius-sm: 0.25rem;
+  --radius: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+
+  --animation-duration-fast: 120ms;
+  --animation-duration-normal: 200ms;
+  --animation-duration-slow: 360ms;
+
+  --chart-color-1: #1f6f54;
+  --chart-color-2: #b7791f;
+  --chart-color-3: #2c6a8f;
+  --chart-color-4: #b3392f;
+  --chart-color-5: #6b5b95;
+}
+
+.dark {
+}

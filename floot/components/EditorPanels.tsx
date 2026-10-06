@@ -1,0 +1,180 @@
+import { Button } from "./Button";
+import { Slider } from "./Slider";
+import { Switch } from "./Switch";
+import { Input } from "./Input";
+import { Layer } from "../helpers/carouselModel";
+import { ADJUST_PRESETS, MAX_ZOOM, NO_ADJUST, isAdjusted } from "../helpers/photoStyle";
+import { PEN_COLOURS, PenMode } from "../helpers/strokes";
+import { STICKERS, STICKER_COLOURS, stickerSrc } from "../helpers/stickerArt";
+import { THEMES } from "../helpers/themes";
+import styles from "./EditorPanels.module.css";
+
+type Patch = (patch: Partial<Layer>, key?: string) => void;
+
+/** Crop, frame and adjust, for the selected photo. */
+export const PhotoStylePanel = ({ layer, onPatch }: { layer: Layer; onPatch: Patch }) => {
+  const crop = layer.crop ?? { zoom: 1, x: 0.5, y: 0.5 };
+  const adj = layer.adjust ?? NO_ADJUST;
+  const off = layer.locked;
+  const setAdj = (a: typeof adj, key?: string) => onPatch({ adjust: isAdjusted(a) ? a : null }, key);
+  return (
+    <div className={styles.stack}>
+      <h3 className={styles.head}>Crop</h3>
+      <div className={styles.field}>
+        <span id="zoom-l">Zoom {crop.zoom.toFixed(2)}x</span>
+        <Slider aria-labelledby="zoom-l" min={1} max={MAX_ZOOM} step={0.05} value={[crop.zoom]} disabled={off} onValueChange={([v]) => onPatch({ crop: { ...crop, zoom: v } }, "crop")} />
+      </div>
+      <div className={styles.field}>
+        <span id="cx-l">Left to right</span>
+        <Slider aria-labelledby="cx-l" min={0} max={100} value={[Math.round(crop.x * 100)]} disabled={off} onValueChange={([v]) => onPatch({ crop: { ...crop, x: v / 100 } }, "crop")} />
+      </div>
+      <div className={styles.field}>
+        <span id="cy-l">Top to bottom</span>
+        <Slider aria-labelledby="cy-l" min={0} max={100} value={[Math.round(crop.y * 100)]} disabled={off} onValueChange={([v]) => onPatch({ crop: { ...crop, y: v / 100 } }, "crop")} />
+      </div>
+      <Button variant="outline" size="sm" disabled={off} onClick={() => onPatch({ crop: undefined })}>
+        Fill the frame
+      </Button>
+
+      <h3 className={styles.head}>Frame</h3>
+      <div className={styles.field}>
+        <span id="rad-l">Rounded corners {layer.radius ?? 0}</span>
+        <Slider aria-labelledby="rad-l" min={0} max={200} value={[layer.radius ?? 0]} disabled={off} onValueChange={([v]) => onPatch({ radius: v }, "radius")} />
+      </div>
+      <div className={styles.row}>
+        <span id="bd-l">Border</span>
+        <Switch aria-labelledby="bd-l" checked={!!layer.border} disabled={off} onCheckedChange={(on) => onPatch({ border: on ? { color: "#ffffff", width: 12 } : null })} />
+      </div>
+      {layer.border && (
+        <>
+          <div className={styles.field}>
+            <span id="bw-l">Border width {layer.border.width}</span>
+            <Slider aria-labelledby="bw-l" min={1} max={60} value={[layer.border.width]} disabled={off} onValueChange={([v]) => onPatch({ border: { ...layer.border!, width: v } }, "border")} />
+          </div>
+          <label className={styles.row}>
+            <span>Border colour</span>
+            <Input type="color" className={styles.colour} value={layer.border.color} disabled={off} onChange={(e) => onPatch({ border: { ...layer.border!, color: e.target.value } }, "bordercolour")} />
+          </label>
+        </>
+      )}
+      <div className={styles.row}>
+        <span id="sh-l">Shadow</span>
+        <Switch aria-labelledby="sh-l" checked={!!layer.shadow} disabled={off} onCheckedChange={(on) => onPatch({ shadow: on })} />
+      </div>
+      <div className={styles.field}>
+        <span id="op-l">Opacity {Math.round((layer.opacity ?? 1) * 100)}%</span>
+        <Slider aria-labelledby="op-l" min={10} max={100} value={[Math.round((layer.opacity ?? 1) * 100)]} disabled={off} onValueChange={([v]) => onPatch({ opacity: v === 100 ? undefined : v / 100 }, "opacity")} />
+      </div>
+
+      <h3 className={styles.head}>Adjust</h3>
+      <div className={styles.chips} role="group" aria-label="Looks">
+        {ADJUST_PRESETS.map((p) => (
+          <Button key={p.id} size="sm" variant={JSON.stringify(adj) === JSON.stringify(p.adjust) ? "primary" : "outline"} disabled={off} onClick={() => setAdj(p.adjust)}>
+            {p.name}
+          </Button>
+        ))}
+      </div>
+      {(["brightness", "contrast", "saturation"] as const).map((k) => (
+        <div className={styles.field} key={k}>
+          <span id={`adj-${k}`}>
+            {k[0].toUpperCase() + k.slice(1)} {adj[k]}
+          </span>
+          <Slider aria-labelledby={`adj-${k}`} min={-100} max={100} value={[adj[k]]} disabled={off} onValueChange={([v]) => setAdj({ ...adj, [k]: v }, `adj-${k}`)} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/** Pen, highlighter and eraser. */
+export const DrawPanel = ({
+  pen,
+  onPen,
+  drawingCount,
+  onClear,
+}: {
+  pen: { mode: PenMode; color: string; size: number };
+  onPen: (p: Partial<{ mode: PenMode; color: string; size: number }>) => void;
+  drawingCount: number;
+  onClear: () => void;
+}) => (
+  <div className={styles.stack}>
+    <p className={styles.hint}>{pen.mode === "eraser" ? "Drag over a drawing to rub it out." : "Draw on the slides with a finger, a pen or a mouse. While this tab is open, photos can't be moved."}</p>
+    <div className={styles.chips} role="group" aria-label="Tool">
+      {(["pen", "highlighter", "eraser"] as const).map((m) => (
+        <Button key={m} size="sm" variant={pen.mode === m ? "primary" : "outline"} onClick={() => onPen({ mode: m })}>
+          {m[0].toUpperCase() + m.slice(1)}
+        </Button>
+      ))}
+    </div>
+    {pen.mode !== "eraser" && (
+      <div className={styles.swatches} role="group" aria-label="Colours">
+        {PEN_COLOURS.map((c) => (
+          <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={pen.color === c} className={styles.swatch} style={{ background: c }} onClick={() => onPen({ color: c })} />
+        ))}
+        <Input type="color" className={styles.colour} aria-label="Other colour" value={pen.color} onChange={(e) => onPen({ color: e.target.value })} />
+      </div>
+    )}
+    <div className={styles.field}>
+      <span id="pen-size">{pen.mode === "eraser" ? "Eraser size" : "Size"} {pen.size}</span>
+      <Slider aria-labelledby="pen-size" min={2} max={80} value={[pen.size]} onValueChange={([v]) => onPen({ size: v })} />
+    </div>
+    <Button variant="outline" size="sm" disabled={drawingCount === 0} onClick={onClear}>
+      Clear all drawings ({drawingCount})
+    </Button>
+  </div>
+);
+
+/** Built-in stickers, in any colour. */
+export const StickerPanel = ({
+  selected,
+  onAdd,
+  onRecolour,
+}: {
+  selected: Layer | null;
+  onAdd: (id: string, colour: string) => void;
+  onRecolour: (colour: string) => void;
+}) => {
+  const colour = selected?.type === "sticker" ? (selected.color ?? "#f6d94a") : "#f6d94a";
+  return (
+    <div className={styles.stack}>
+      <p className={styles.hint}>Click a sticker to add it to the slide in view. Select one on the canvas to change its colour.</p>
+      <div className={styles.stickerGrid}>
+        {STICKERS.map((s) => (
+          <button key={s.id} type="button" className={styles.stickerButton} aria-label={`Add ${s.name}`} onClick={() => onAdd(s.id, colour)}>
+            <img src={stickerSrc(s.id, colour)} alt="" width={56} height={56} />
+          </button>
+        ))}
+      </div>
+      <div className={styles.swatches} role="group" aria-label="Sticker colour">
+        {STICKER_COLOURS.map((c) => (
+          <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={colour === c} className={styles.swatch} style={{ background: c }} onClick={() => selected?.type === "sticker" && onRecolour(c)} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/** Whole-carousel looks, and arranging the photos. */
+export const ThemePanel = ({ photoCount, onTheme, onArrange }: { photoCount: number; onTheme: (id: string) => void; onArrange: () => void }) => (
+  <div className={styles.stack}>
+    <p className={styles.hint}>A theme sets the background and gives every photo its frame, corners and shadow. Undo takes it back.</p>
+    <ul className={styles.themeList}>
+      {THEMES.map((t) => (
+        <li key={t.id}>
+          <button type="button" className={styles.themeButton} onClick={() => onTheme(t.id)}>
+            <span className={styles.themeSwatch} style={{ background: t.gradient ? `linear-gradient(${t.gradient.angle}deg, ${t.gradient.from}, ${t.gradient.to})` : t.background, borderColor: t.border?.color ?? "var(--border)" }} />
+            <span>
+              <strong>{t.name}</strong>
+              <small>{t.blurb}</small>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+    <Button variant="outline" disabled={photoCount === 0} onClick={onArrange}>
+      Arrange my {photoCount} {photoCount === 1 ? "photo" : "photos"} across the slides
+    </Button>
+    <p className={styles.hint}>Arranging places photos in the order you added them: one large, two stacked, then one that runs across a slide edge. It adds slides if it needs them.</p>
+  </div>
+);
