@@ -55,8 +55,8 @@ test.describe("F12 landing page", () => {
     const text = await page.locator("body").innerText();
     expect(text).toContain("1080 pixels wide");
     expect(text).toContain("25 MB");
-    expect(text).toContain("10 slides");
-    expect(text).toContain("20 slides");
+    expect(text).toContain("Every tool is free");
+    expect(text).toContain("Add as many slides as the project needs");
     expect(text).toContain("100 steps");
     expect(text).toContain("30 free fonts");
   });
