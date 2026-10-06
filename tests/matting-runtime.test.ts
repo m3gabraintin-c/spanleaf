@@ -54,7 +54,7 @@ describe("createMatter", () => {
     assert.deepEqual(dims, [1, 3, MATTE_SIZE, MATTE_SIZE]);
     assert.deepEqual(Object.keys(log.runs[0]), ["input.1"]);
     assert.equal(log.runs[0]["input.1"], log.instances[0], "the tensor that was made is the one fed in");
-    assert.deepEqual([...answer], [0, 0, 0], "the first of the network's answers, not the last");
+    assert.deepEqual(Array.from(answer), [0, 0, 0], "the first of the network's answers, not the last");
   });
 
   it("can be used again and again with the one session", async () => {

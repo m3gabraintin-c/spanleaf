@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { completeUpload, createUploadUrl, deleteMedia, getMediaUrls, MEDIA_BUCKET } from "@/server/media";
 import { createProject, patchProject, trashProject } from "@/server/projects";
 import { uploadUrlInput } from "@/server/schemas";
-import { apiCode, FakeStorage, freshDb, makePremium, mkUser, type TestDb } from "./helpers";
+import { apiCode, FakeStorage, freshDb, mkUser, type TestDb } from "./helpers";
 
 let t: TestDb;
 let alice: string;
@@ -60,14 +60,14 @@ describe("upload-url", () => {
     assert.equal(await apiCode(createUploadUrl(deps(), alice, { ...input, mime: "image/gif" })), "UNSUPPORTED_FILE");
     assert.equal(await apiCode(createUploadUrl(deps(), alice, { ...input, bytes: 30 * 1024 * 1024 })), "FILE_TOO_LARGE");
   });
-  it("enforces the storage quota: 2 GB free, 20 GB premium", async () => {
+  it("gives everyone the same 20 GB of storage, and refuses an upload that would pass it", async () => {
     fresh();
     const carol = await mkUser(t.sql, "carol@example.test");
     const big = randomUUID();
-    await t.sql`insert into media (id,user_id,kind,status,storage_path,mime_type,bytes) values (${big},${carol},'image','ready',${carol + "/" + big + ".png"},'image/png',${2 * 1024 ** 3 - 1000})`;
+    await t.sql`insert into media (id,user_id,kind,status,storage_path,mime_type,bytes) values (${big},${carol},'image','ready',${carol + "/" + big + ".png"},'image/png',${2 * 1024 ** 3 + 5000})`;
+    assert.equal(await apiCode(createUploadUrl(deps(), carol, input)), null, "well past the old 2 GB limit, and still fine");
+    await t.sql`update media set bytes = ${20 * 1024 ** 3 - 1000} where id = ${big}`;
     assert.equal(await apiCode(createUploadUrl(deps(), carol, input)), "LIMIT_REACHED");
-    await makePremium(t.sql, carol);
-    assert.equal(await apiCode(createUploadUrl(deps(), carol, input)), null);
   });
   it("removes the pending row if storage can't make a URL", async () => {
     fresh();

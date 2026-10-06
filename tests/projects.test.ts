@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { randomUUID } from "node:crypto";
 import { createProject, duplicateProject, getProject, listProjects, patchProject, restoreProject, trashProject } from "@/server/projects";
-import { apiCode, freshDb, makePremium, mkUser, type TestDb } from "./helpers";
+import { apiCode, freshDb, mkUser, type TestDb } from "./helpers";
 
 let t: TestDb;
 let alice: string;
@@ -43,40 +43,19 @@ describe("create and read", () => {
     assert.equal(await apiCode(getProject(t.db, alice, "not-a-uuid")), "NOT_FOUND");
     assert.equal(await apiCode(getProject(t.db, alice, randomUUID())), "NOT_FOUND");
   });
-  it("free users can't create 11 slides, premium can create 20", async () => {
-    assert.equal(await apiCode(createProject(t.db, bob, { slideCount: 11 })), "LIMIT_REACHED");
-    await makePremium(t.sql, alice);
-    const p = await createProject(t.db, alice, { slideCount: 20 });
-    assert.equal(p.slideCount, 20);
+  it("has no limit by plan: any number of slides from 1 to 500", async () => {
+    for (const n of [1, 11, 20, 21, 500]) assert.equal((await createProject(t.db, bob, { slideCount: n })).slideCount, n);
   });
-});
-
-describe("templates", () => {
-  let freeT: string;
-  let premT: string;
-  before(async () => {
-    const d = { v: 1, background: { type: "color", value: "#eee" }, elements: [{ id: "e1", type: "sticker", x: 1, y: 2, w: 3, h: 4, rotation: 0, locked: false, assetPath: "stars/one.svg" }] };
-    [{ id: freeT }] = await t.sql<{ id: string }[]>`insert into templates (slug,title,style_tag,format,slide_count,is_premium,status) values ('f','F','x','story_9_16',4,false,'published') returning id`;
-    [{ id: premT }] = await t.sql<{ id: string }[]>`insert into templates (slug,title,style_tag,format,slide_count,is_premium,status) values ('p','P','x','square',2,true,'published') returning id`;
-    await t.sql`insert into template_docs (template_id, doc) select id, ${t.sql.json(d)} from templates`;
+  it("refuses a slide count past the ceiling of 500", async () => {
+    await assert.rejects(createProject(t.db, bob, { slideCount: 501 }));
   });
-  it("copies a free template's format, slide count and document", async () => {
-    const p = await createProject(t.db, bob, { templateId: freeT, format: "square", slideCount: 1 });
-    assert.equal(p.format, "story_9_16");
-    assert.equal(p.slideCount, 4);
-    assert.equal(p.doc.elements.length, 1);
-  });
-  it("a free user gets PREMIUM_REQUIRED for a premium template", async () => {
-    assert.equal(await apiCode(createProject(t.db, bob, { templateId: premT })), "PREMIUM_REQUIRED");
-  });
-  it("a premium user can use it", async () => {
-    const p = await createProject(t.db, alice, { templateId: premT });
-    assert.equal(p.format, "square");
-  });
-  it("an unknown or draft template is NOT_FOUND", async () => {
-    assert.equal(await apiCode(createProject(t.db, bob, { templateId: randomUUID() })), "NOT_FOUND");
-    const [{ id }] = await t.sql<{ id: string }[]>`insert into templates (slug,title,style_tag,format,slide_count,status) values ('d','D','x','square',1,'draft') returning id`;
-    assert.equal(await apiCode(createProject(t.db, bob, { templateId: id })), "NOT_FOUND");
+  it("a project can grow slide by slide, a long way, and shrink again", async () => {
+    const p = await createProject(t.db, bob, { slideCount: 3 });
+    let rev = p.rev;
+    for (const n of [4, 25, 140, 500, 60]) {
+      rev = (await patchProject(t.db, bob, p.id, { rev, slideCount: n })).rev;
+      assert.equal((await getProject(t.db, bob, p.id)).slideCount, n);
+    }
   });
 });
 
@@ -116,12 +95,10 @@ describe("autosave (patch)", () => {
     await trashProject(t.db, bob, p.id);
     assert.equal(await apiCode(patchProject(t.db, bob, p.id, { rev: 0, title: "x" })), "NOT_FOUND");
   });
-  it("video layers need Premium", async () => {
+  it("video layers are allowed for everyone", async () => {
     const p = await createProject(t.db, bob, {});
     const video = { ...image(), type: "video" as const };
-    assert.equal(await apiCode(patchProject(t.db, bob, p.id, { rev: 0, doc: doc([video]) })), "PREMIUM_REQUIRED");
-    const q = await createProject(t.db, alice, {});
-    assert.equal(await apiCode(patchProject(t.db, alice, q.id, { rev: 0, doc: doc([video]) })), null);
+    assert.equal(await apiCode(patchProject(t.db, bob, p.id, { rev: 0, doc: doc([video]) })), null);
   });
   it("a photo reference must be the caller's own, ready photo", async () => {
     const p = await createProject(t.db, bob, {});
@@ -139,9 +116,9 @@ describe("autosave (patch)", () => {
     const [row] = await t.sql<{ media_ids: string[] }[]>`select media_ids from projects where id = ${p.id}`;
     assert.deepEqual(row.media_ids, [mine], "media_ids is kept in step with the document, without duplicates");
   });
-  it("growing the slide count past the plan is LIMIT_REACHED", async () => {
+  it("saving a slide count past the ceiling is refused and changes nothing", async () => {
     const p = await createProject(t.db, bob, { slideCount: 10 });
-    assert.equal(await apiCode(patchProject(t.db, bob, p.id, { rev: 0, slideCount: 11 })), "LIMIT_REACHED");
+    await assert.rejects(patchProject(t.db, bob, p.id, { rev: 0, slideCount: 501 }));
     assert.equal((await getProject(t.db, bob, p.id)).slideCount, 10);
   });
 });

@@ -3,7 +3,7 @@ import { layoutCarousel, type LayoutPhoto } from "@/lib/compose";
 import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
 import type { ThemeChoice } from "@/lib/themes";
 import type { FormatKey } from "@/lib/formats";
-import { MAX_SLIDES_FREE, MAX_SLIDES_PREMIUM } from "@/lib/formats";
+import { MAX_SLIDES } from "@/lib/formats";
 import type { Project } from "@/data/types";
 import type { Db } from "./db";
 import { ApiError, isUuid } from "./errors";
@@ -39,12 +39,12 @@ export async function composeProject(deps: { db: Db; storage: Storage; ai: Compo
   if (ids.length === 0 || ids.some((id) => !isUuid(id))) throw new ApiError("INVALID", "Choose at least one photo.");
   if (new Set(ids).size !== ids.length) throw new ApiError("INVALID", "The same photo was chosen twice.");
 
-  const { rows, premium } = await deps.db.asUser(userId, async (tx) => ({
-    rows: await tx<MediaRow[]>`
+  const rows = await deps.db.asUser(
+    userId,
+    (tx) => tx<MediaRow[]>`
       select id, width, height, storage_path, thumb_path from media
       where id = any(${ids}::uuid[]) and status = 'ready'`,
-    premium: (await tx<{ p: boolean }[]>`select current_user_is_premium() as p`)[0].p,
-  }));
+  );
   // Row level security only returns the caller's own rows, so a foreign or unfinished id comes back missing.
   if (rows.length !== ids.length) throw new ApiError("INVALID", "Some of those photos aren't yours or aren't ready.");
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -73,7 +73,7 @@ export async function composeProject(deps: { db: Db; storage: Storage; ai: Compo
   const format = input.format ?? "portrait_4_5";
   const { doc, slideCount } = layoutCarousel(photos, analysis?.plan ?? FALLBACK_PLAN, {
     format,
-    maxSlides: premium ? MAX_SLIDES_PREMIUM : MAX_SLIDES_FREE,
+    maxSlides: MAX_SLIDES,
     seed: input.seed ?? Math.floor(Math.random() * 1_000_000),
     theme: input.theme,
   });

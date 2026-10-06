@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 
 /**
- * Environment variables, read when first needed and grouped by feature. A missing Stripe key
+ * Environment variables, read when first needed and grouped by feature. A missing optional key
  * doesn't stop the editor from working, and the error names the variable, never its value.
  */
 function read<T extends z.ZodRawShape>(group: string, shape: T) {
@@ -25,14 +25,6 @@ export const supabaseEnv = () =>
 
 export const supabasePublicEnv = () =>
   read("Supabase", { NEXT_PUBLIC_SUPABASE_URL: z.string().url(), NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1) });
-
-export const stripeEnv = () =>
-  read("Stripe", {
-    STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
-    STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
-    STRIPE_PRICE_ID: z.string().startsWith("price_"),
-    APP_URL: z.string().url(),
-  });
 
 export const cronEnv = () => read("cron jobs", { CRON_SECRET: z.string().min(16) });
 

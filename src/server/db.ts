@@ -48,9 +48,6 @@ export function getDb(): Db {
 /** Postgres errors carry codes. Turn the ones we raise on purpose into API errors. */
 export function mapDbError(e: unknown): never {
   const err = e as { code?: string; hint?: string; constraint_name?: string };
-  if (err?.code === "P0001" && err.hint === "PREMIUM_REQUIRED") {
-    throw new ApiError("LIMIT_REACHED", "Your plan has reached its slide limit.");
-  }
   if (err?.code === "42501") throw new ApiError("NOT_FOUND", "Not found.");
   throw e;
 }

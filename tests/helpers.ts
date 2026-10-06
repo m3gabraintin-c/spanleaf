@@ -3,7 +3,6 @@ import path from "node:path";
 import postgres from "postgres";
 import { createDb, type Db } from "@/server/db";
 import type { AuthAdmin, Storage } from "@/server/storage";
-import type { StripeApi, SubSnapshot } from "@/server/stripe";
 
 const ADMIN_URL = process.env.TEST_ADMIN_URL ?? "postgres://tester:tester@localhost:5432/postgres";
 const urlFor = (name: string) => ADMIN_URL.replace(/\/[^/]*$/, `/${name}`);
@@ -34,13 +33,6 @@ export async function freshDb(name: string): Promise<TestDb> {
 export async function mkUser(sql: postgres.Sql, email: string): Promise<string> {
   const [u] = await sql<{ id: string }[]>`insert into auth.users (email) values (${email}) returning id`;
   return u.id;
-}
-
-export async function makePremium(sql: postgres.Sql, userId: string, status = "active", daysLeft = 30) {
-  await sql`
-    insert into subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, current_period_end)
-    values (${userId}, ${"cus_" + userId.slice(0, 8)}, ${"sub_" + userId.slice(0, 8)}, ${status}, now() + ${daysLeft + " days"}::interval)
-    on conflict (user_id) do update set status = excluded.status, current_period_end = excluded.current_period_end`;
 }
 
 /** Run SQL the way a given database role would, with the caller's id in the JWT claims. */
@@ -108,55 +100,3 @@ export class FakeAuthAdmin implements AuthAdmin {
     await this.sql`delete from auth.users where id = ${id}`;
   }
 }
-
-let customerSeq = 0; // Stripe customer ids are unique across the whole account, so the fake keeps counting across tests
-
-export class FakeStripe implements StripeApi {
-  customers: { id: string; email: string; userId: string }[] = [];
-  subs = new Map<string, SubSnapshot>();
-  checkouts: Parameters<StripeApi["createCheckoutSession"]>[0][] = [];
-  portals: Parameters<StripeApi["createPortalSession"]>[0][] = [];
-  cancelled: string[] = [];
-  retrieveCalls = 0;
-  failRetrieve = 0; // number of upcoming retrieve calls that should throw
-  failCancel = false;
-  async createCustomer(p: { email: string; userId: string }) {
-    const c = { id: `cus_fake_${++customerSeq}`, ...p };
-    this.customers.push(c);
-    return { id: c.id };
-  }
-  async createCheckoutSession(p: Parameters<StripeApi["createCheckoutSession"]>[0]) {
-    this.checkouts.push(p);
-    return { url: "https://checkout.test/session" };
-  }
-  async createPortalSession(p: Parameters<StripeApi["createPortalSession"]>[0]) {
-    this.portals.push(p);
-    return { url: "https://portal.test/session" };
-  }
-  async retrieveSubscription(id: string) {
-    this.retrieveCalls++;
-    if (this.failRetrieve > 0) {
-      this.failRetrieve--;
-      throw new Error("stripe down");
-    }
-    const s = this.subs.get(id);
-    if (!s) throw new Error("no such subscription");
-    return s;
-  }
-  async cancelSubscription(id: string) {
-    if (this.failCancel) throw new Error("stripe down");
-    this.cancelled.push(id);
-    const s = this.subs.get(id);
-    if (s) this.subs.set(id, { ...s, status: "canceled" });
-  }
-}
-
-export const snap = (over: Partial<SubSnapshot> & { id: string; customerId: string }): SubSnapshot => ({
-  status: "active",
-  priceId: "price_test",
-  trialEnd: null,
-  currentPeriodEnd: new Date(Date.now() + 30 * 864e5),
-  cancelAtPeriodEnd: false,
-  userId: null,
-  ...over,
-});

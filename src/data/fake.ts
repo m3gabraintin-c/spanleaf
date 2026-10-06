@@ -1,6 +1,6 @@
 import { createStore, get, set, keys, getMany } from "idb-keyval";
 import { DocSchema, EMPTY_DOC, mediaIdsOf, uid } from "@/lib/doc";
-import { MAX_SLIDES_FREE, FORMAT_KEYS } from "@/lib/formats";
+import { FORMAT_KEYS, MAX_SLIDES } from "@/lib/formats";
 import { prepareImage } from "@/lib/image";
 import { layoutCarousel } from "@/lib/compose";
 import { FALLBACK_PLAN, FALLBACK_TAGS } from "@/lib/plan";
@@ -68,12 +68,12 @@ async function requireUser(): Promise<Me> {
 }
 
 const fake: DataLayer = {
-  capabilities: { google: false, billing: false },
+  capabilities: { google: false, email: false },
 
   async getMe() {
     const user = await get<{ id: string; email: string }>("auth:user", store);
     if (!user) return null;
-    return { ...user, premium: false, maxSlides: MAX_SLIDES_FREE };
+    return user;
   },
 
   async signIn(email) {  // the destination only matters for the real email link
@@ -82,7 +82,7 @@ const fake: DataLayer = {
     const existing = await get<{ id: string; email: string }>("auth:user", store);
     const user = existing?.email === clean ? existing : { id: uid(), email: clean };
     await set("auth:user", user, store);
-    return { status: "signed_in", me: { ...user, premium: false, maxSlides: MAX_SLIDES_FREE } };
+    return { status: "signed_in", me: user };
   },
 
   async signOut() {
@@ -92,14 +92,6 @@ const fake: DataLayer = {
   },
 
   async completeOnboarding() {},
-
-  async startCheckout() {
-    throw new DataError("INTERNAL", "Billing isn't connected in this build.");
-  },
-
-  async openPortal() {
-    throw new DataError("INTERNAL", "Billing isn't connected in this build.");
-  },
 
   async deleteAccount() {
     await requireUser();
@@ -125,8 +117,7 @@ const fake: DataLayer = {
   async createProject({ format, slideCount, title }) {
     const me = await requireUser();
     if (!FORMAT_KEYS.includes(format)) throw new DataError("INVALID", "Unknown format.");
-    if (!Number.isInteger(slideCount) || slideCount < 1) throw new DataError("INVALID", "Slide count must be at least 1.");
-    if (slideCount > me.maxSlides) throw new DataError("LIMIT_REACHED", `Your plan allows up to ${me.maxSlides} slides.`);
+    if (!Number.isInteger(slideCount) || slideCount < 1 || slideCount > MAX_SLIDES) throw new DataError("INVALID", `Slide count must be from 1 to ${MAX_SLIDES}.`);
     const now = new Date().toISOString();
     const p: StoredProject = {
       id: uid(),
@@ -154,7 +145,7 @@ const fake: DataLayer = {
     const { doc, slideCount } = layoutCarousel(
       media.map((m) => ({ id: m!.record.id, width: m!.record.width, height: m!.record.height, name: m!.record.name, tags: FALLBACK_TAGS })),
       FALLBACK_PLAN,
-      { format, maxSlides: me.maxSlides, seed: seed ?? Math.floor(Math.random() * 1_000_000), theme },
+      { format, maxSlides: MAX_SLIDES, seed: seed ?? Math.floor(Math.random() * 1_000_000), theme },
     );
     const now = new Date().toISOString();
     const p: StoredProject = {
@@ -223,10 +214,7 @@ const fake: DataLayer = {
     if (patch.title !== undefined) next.title = patch.title.trim() || "Untitled";
     if (patch.format !== undefined) next.format = patch.format;
     if (patch.slideCount !== undefined) {
-      const me = await requireUser();
-      if (patch.slideCount > p.slideCount && patch.slideCount > me.maxSlides) {
-        throw new DataError("LIMIT_REACHED", `Your plan allows up to ${me.maxSlides} slides.`);
-      }
+      if (!Number.isInteger(patch.slideCount) || patch.slideCount < 1 || patch.slideCount > MAX_SLIDES) throw new DataError("INVALID", `Slide count must be from 1 to ${MAX_SLIDES}.`);
       next.slideCount = patch.slideCount;
     }
     next.rev = p.rev + 1;
@@ -273,7 +261,3 @@ const fake: DataLayer = {
 
 export default fake;
 
-/** Media records are needed to rebuild element names and sizes when a project reopens. */
-export async function getMediaRecord(id: string): Promise<MediaRecord | undefined> {
-  return (await get<StoredMedia>(`media:${id}`, store))?.record;
-}

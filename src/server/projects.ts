@@ -1,8 +1,8 @@
 import "server-only";
-import { DocSchema, EMPTY_DOC, mediaIdsOf, type Doc } from "@/lib/doc";
+import { EMPTY_DOC, mediaIdsOf, type Doc } from "@/lib/doc";
 import type { FormatKey } from "@/lib/formats";
 import type { Project, ProjectSummary } from "@/data/types";
-import { mapDbError, type Db, type Q } from "./db";
+import { mapDbError, type Db } from "./db";
 import { ApiError, isUuid } from "./errors";
 
 interface Row {
@@ -28,8 +28,6 @@ export const requireId = (id: string) => {
   if (!isUuid(id)) throw new ApiError("NOT_FOUND", "That project doesn't exist.");
   return id;
 };
-
-const isPremium = async (tx: Q) => (await tx<{ p: boolean }[]>`select current_user_is_premium() as p`)[0].p;
 
 /** GET /api/projects. Newest edit first. The cursor keeps the database's own microsecond timestamp. */
 export async function listProjects(db: Db, userId: string, input: { cursor?: string; limit: number }) {
@@ -61,39 +59,19 @@ export async function listProjects(db: Db, userId: string, input: { cursor?: str
   };
 }
 
-/** POST /api/projects. Blank, or copied from a template the caller is allowed to open. */
+/** POST /api/projects. A blank project. */
 export async function createProject(
   db: Db,
   userId: string,
-  input: { format?: string; slideCount?: number; title?: string; templateId?: string },
+  input: { format?: string; slideCount?: number; title?: string },
 ): Promise<Project> {
   return db.asUser(userId, async (tx) => {
-    let doc: Doc = EMPTY_DOC;
-    let format = (input.format ?? "portrait_4_5") as FormatKey;
-    let slideCount = input.slideCount ?? 3;
-    let templateId: string | null = null;
-
-    if (input.templateId) {
-      // templates is readable by anyone signed in. template_docs is filtered by row level security,
-      // so a premium template's document only comes back for a premium user.
-      const [t] = await tx<{ id: string; format: FormatKey; slide_count: number }[]>`
-        select id, format, slide_count from templates where id = ${input.templateId}`;
-      if (!t) throw new ApiError("NOT_FOUND", "That template doesn't exist.");
-      const [d] = await tx<{ doc: unknown }[]>`select doc from template_docs where template_id = ${t.id}`;
-      if (!d) throw new ApiError("PREMIUM_REQUIRED", "That template needs Premium.");
-      const parsed = DocSchema.safeParse(d.doc);
-      if (!parsed.success) throw new ApiError("INTERNAL", "That template is damaged.");
-      doc = parsed.data;
-      format = t.format;
-      slideCount = t.slide_count;
-      templateId = t.id;
-    }
-
+    const format = (input.format ?? "portrait_4_5") as FormatKey;
+    const slideCount = input.slideCount ?? 3;
     try {
       const [row] = await tx<Row[]>`
-        insert into projects (user_id, title, format, slide_count, doc, source_template_id)
-        values (${userId}, ${input.title?.trim() || "Untitled"}, ${format}, ${slideCount},
-                ${tx.json(doc)}, ${templateId})
+        insert into projects (user_id, title, format, slide_count, doc)
+        values (${userId}, ${input.title?.trim() || "Untitled"}, ${format}, ${slideCount}, ${tx.json(EMPTY_DOC)})
         returning id, title, format, slide_count, doc, rev, updated_at`;
       return full(row);
     } catch (e) {
@@ -130,9 +108,6 @@ export async function patchProject(db: Db, userId: string, id: string, input: Pa
   return db.asUser(userId, async (tx) => {
     let mediaIds: string[] | null = null;
     if (input.doc) {
-      if (input.doc.elements.some((e) => e.type === "video") && !(await isPremium(tx))) {
-        throw new ApiError("PREMIUM_REQUIRED", "Video layers need Premium.");
-      }
       mediaIds = mediaIdsOf(input.doc);
       if (mediaIds.some((m) => !isUuid(m))) throw new ApiError("INVALID", "The project refers to a photo that doesn't exist.");
       if (mediaIds.length) {
@@ -172,8 +147,8 @@ export async function duplicateProject(db: Db, userId: string, id: string): Prom
   return db.asUser(userId, async (tx) => {
     try {
       const [row] = await tx<Row[]>`
-        insert into projects (user_id, title, format, slide_count, doc, media_ids, source_template_id)
-        select user_id, left(title, 74) || ' copy', format, slide_count, doc, media_ids, source_template_id
+        insert into projects (user_id, title, format, slide_count, doc, media_ids)
+        select user_id, left(title, 74) || ' copy', format, slide_count, doc, media_ids
         from projects where id = ${id} and deleted_at is null
         returning id, title, format, slide_count, doc, rev, updated_at`;
       if (!row) throw new ApiError("NOT_FOUND", "That project doesn't exist.");

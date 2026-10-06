@@ -60,7 +60,7 @@ const q = (o: Record<string, string | number | undefined>) => {
 const origin = () => (typeof location === "undefined" ? "" : location.origin);
 
 const api: DataLayer = {
-  capabilities: { google: process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1", billing: true },
+  capabilities: { google: process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1", email: true },
 
   async getMe() {
     try {
@@ -97,9 +97,6 @@ const api: DataLayer = {
   async completeOnboarding(locale) {
     await call("POST", "/api/onboarding/complete", locale ? { locale } : {});
   },
-
-  startCheckout: (returnTo) => call("POST", "/api/billing/checkout", returnTo ? { returnTo } : {}),
-  openPortal: (returnTo) => call("POST", "/api/billing/portal", returnTo ? { returnTo } : {}),
 
   async deleteAccount() {
     await call("DELETE", "/api/me", { confirm: "DELETE" });

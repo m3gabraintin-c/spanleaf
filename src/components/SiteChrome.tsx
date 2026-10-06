@@ -11,9 +11,6 @@ export function SiteHeader() {
           {APP_NAME}
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1">
-          <Link href="/pricing" className={buttonClasses("ghost", "md")}>
-            Pricing
-          </Link>
           <Link href="/login" className={buttonClasses("primary", "md")}>
             Sign in
           </Link>
@@ -27,7 +24,6 @@ export function SiteFooter() {
   const links = [
     ["/terms", "Terms"],
     ["/privacy", "Privacy"],
-    ["/refund", "Refunds"],
     ["/contact", "Contact"],
   ] as const;
   return (

@@ -11,13 +11,11 @@ export type DataErrorCode =
   | "NOT_FOUND"
   | "REV_CONFLICT"
   | "LIMIT_REACHED"
-  | "PREMIUM_REQUIRED"
   | "INVALID"
   | "UNSUPPORTED_FILE"
   | "FILE_TOO_LARGE"
   | "DECODE_FAILED"
   | "RATE_LIMITED"
-  | "ALREADY_SUBSCRIBED"
   | "UPLOAD_MISSING"
   | "IN_USE"
   | "ACCOUNT_DELETING"
@@ -36,23 +34,18 @@ export class DataError extends Error {
 export interface Me {
   id: string;
   email: string;
-  premium: boolean;
-  maxSlides: number;
   /** The fields below come from the real API. The fake data layer leaves them out. */
-  trialEndsAt?: string | null;
-  renewsAt?: string | null;
-  cancelsAtPeriodEnd?: boolean;
-  canStartTrial?: boolean;
   onboardingCompleted?: boolean;
   locale?: string;
 }
 
 /** Real sign-in sends an email link and finishes in another tab. The fake signs in on the spot. */
-export type SignInResult = { status: "signed_in"; me: Me } | { status: "check_email" };
+type SignInResult = { status: "signed_in"; me: Me } | { status: "check_email" };
 
-export interface Capabilities {
+interface Capabilities {
   google: boolean;
-  billing: boolean;
+  /** Whether signing in sends an email link. The browser-only build doesn't. */
+  email: boolean;
 }
 
 export interface ProjectSummary {
@@ -83,7 +76,7 @@ export interface MediaUrls {
   thumbUrl: string;
 }
 
-export interface SavePatch {
+interface SavePatch {
   /** The revision the client last saw. A mismatch means someone else saved first. */
   rev: number;
   doc?: Doc;
@@ -103,10 +96,6 @@ export interface DataLayer {
   signOut(): Promise<void>;
   /** POST /api/onboarding/complete */
   completeOnboarding(locale?: string): Promise<void>;
-  /** POST /api/billing/checkout. Returns a Stripe-hosted page to send the browser to. */
-  startCheckout(returnTo?: string): Promise<{ url: string }>;
-  /** POST /api/billing/portal */
-  openPortal(returnTo?: string): Promise<{ url: string }>;
   /** DELETE /api/me. Signs the user out afterwards. */
   deleteAccount(): Promise<void>;
   /** GET /api/projects */
@@ -121,7 +110,7 @@ export interface DataLayer {
   composeProject(input: { mediaIds: string[]; format?: FormatKey; title?: string; seed?: number; theme?: ThemeChoice }): Promise<Project>;
   /** GET /api/projects/:id */
   getProject(id: string): Promise<Project>;
-  /** PATCH /api/projects/:id. Throws REV_CONFLICT or LIMIT_REACHED. */
+  /** PATCH /api/projects/:id. Throws REV_CONFLICT. */
   saveProject(id: string, patch: SavePatch): Promise<{ rev: number }>;
   /**
    * A last save for when the page is closing or reloading. It can't be awaited and must start

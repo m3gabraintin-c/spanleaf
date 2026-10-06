@@ -15,8 +15,11 @@ export const FORMATS = {
 export type FormatKey = keyof typeof FORMATS;
 export const FORMAT_KEYS = Object.keys(FORMATS) as FormatKey[];
 
-export const MAX_SLIDES_FREE = 10;
-export const MAX_SLIDES_PREMIUM = 20;
+/**
+ * The most slides a project can have. Nobody is held to a smaller number by a plan. This is only a ceiling that
+ * keeps a project loadable: it is also held down by the 2 MB a saved project may take and its 500 layers.
+ */
+export const MAX_SLIDES = 500;
 
 /** Most photos one batch takes, whether added in the editor or used to start a carousel. */
 export const MAX_BATCH_PHOTOS = 30;
