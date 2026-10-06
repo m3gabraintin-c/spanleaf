@@ -4,10 +4,10 @@ A browser tool for seamless carousels: lay photos along a row of slides, drag on
 
 Status: a working prototype, not a launched product. It runs in two modes, set when you build:
 
-- **Demo mode** (default): everything is kept in the browser. No server, no accounts, no payments. This is what the browser tests run against.
-- **Real-backend mode** (`NEXT_PUBLIC_DATA_LAYER=api`): Supabase for accounts, database and photo storage, Stripe for billing. The code is written and tested against PostgreSQL with stand-ins for the live services. It has not been run against live Supabase or Stripe. Read `docs/production-setup.md` first.
+- **Demo mode** (default): everything is kept in the browser. No server, no accounts. This is what the browser tests run against.
+- **Real-backend mode** (`NEXT_PUBLIC_DATA_LAYER=api`): Supabase for accounts, database and photo storage. The code is written and tested against PostgreSQL with stand-ins for the live services. It has not been run against live Supabase. Read `docs/production-setup.md` first.
 
-Known gaps: no account or upgrade screens, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust, Draw, Cut out) are covered by tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
+Known gaps: no account screen, no favicon or app icon, placeholder terms and privacy pages. The editor screens added with the themes work (Themes, Crop, Size, Stickers, Frames, Adjust, Draw, Cut out) are covered by tests of their logic but have not been run in a browser, and nothing has been tested in Safari or on a real phone.
 
 ## Run it
 
@@ -36,7 +36,6 @@ If a server from an earlier build is still running on port 3100, the browser tes
 ```bash
 DATABASE_URL=<direct connection string> npm run db:migrate        # applies supabase/migrations in order, safe to rerun
 DATABASE_URL=<direct connection string> node scripts/check-rls.mjs # do the access rules work on this database?
-DATABASE_URL=<development database only> npm run db:seed          # fake templates and sticker records
 ```
 
 ## Start from photos (the AI composer)
@@ -79,13 +78,13 @@ Slide fonts: 30 open-licence families are copied from the `@fontsource` packages
 | `src/app/` | Routes. Marketing pages under `(site)`, signed-in screens under `app/`, the API under `api/` |
 | `src/editor/` | The canvas (Konva), the store with undo, autosave, export, and the panels |
 | `src/data/` | The data layer. `types.ts` is the contract. `fake.ts` runs in the browser. `api.ts` calls the routes |
-| `src/server/` | Server logic: projects, media, billing, the Stripe webhook, jobs. Written to take its database, storage and Stripe clients as arguments, so tests can pass fakes |
+| `src/server/` | Server logic: projects, media, the composer, jobs. Written to take its database and storage clients as arguments, so tests can pass fakes |
 | `src/ui/` | Interface components |
-| `src/lib/` | Formats, the saved document schema (zod), image preparation, fonts, pricing |
+| `src/lib/` | Formats, the saved document schema (zod), image preparation, fonts, themes, drawing and cut-out maths |
 | `supabase/migrations/` | The database, in order |
 | `tests/` | Backend tests |
 | `e2e/` | Browser tests |
-| `scripts/` | Migration, seed, checks, and screenshot scripts |
+| `scripts/` | Migration, checks, the model download, and screenshot scripts |
 | `docs/production-setup.md` | What to set up, in order, to run it for real |
 
 ## Licence

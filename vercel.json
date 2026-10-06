@@ -1,8 +1,16 @@
 {
   "crons": [
-    { "path": "/api/cron/media-cleanup", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/trash-purge", "schedule": "15 3 * * *" },
-    { "path": "/api/cron/stripe-reconcile", "schedule": "30 3 * * *" },
-    { "path": "/api/cron/account-deletion", "schedule": "45 3 * * *" }
+    {
+      "path": "/api/cron/media-cleanup",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/trash-purge",
+      "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/account-deletion",
+      "schedule": "45 3 * * *"
+    }
   ]
 }

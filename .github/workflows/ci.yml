@@ -47,9 +47,6 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
           SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-key
           DATABASE_URL: postgres://tester:tester@localhost:5432/postgres
-          STRIPE_SECRET_KEY: sk_test_ci_dummy
-          STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
-          STRIPE_PRICE_ID: price_ci_dummy
           APP_URL: http://localhost:3000
           CRON_SECRET: ci-dummy-cron-secret-0123456789
       - uses: actions/upload-artifact@v4

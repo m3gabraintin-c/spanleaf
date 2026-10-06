@@ -11,7 +11,6 @@
     "verify": "node scripts/verify-slice.mjs",
     "test": "node --conditions react-server --import tsx --test --test-concurrency=4 tests/*.test.ts",
     "db:migrate": "node scripts/migrate.mjs",
-    "db:seed": "node scripts/seed.mjs",
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report",
     "fonts": "node scripts/sync-fonts.mjs",
@@ -44,7 +43,6 @@
     "react-dom": "^19.3.0",
     "react-konva": "^19.3.0",
     "server-only": "^0.0.1",
-    "stripe": "^23.0.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },

@@ -147,7 +147,7 @@ test.describe("X small screens: nothing spills sideways at 320px", () => {
       const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(over, `${label} spills ${over}px sideways`).toBeLessThanOrEqual(0);
     };
-    for (const p of ["/", "/pricing", "/terms", "/login"]) {
+    for (const p of ["/", "/terms", "/login"]) {
       await page.goto(p);
       await check(p);
     }
