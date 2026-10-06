@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Copy, Frame, GripVertical, Image as ImageIcon, Lock, LockOpen, Pencil, Sticker, Trash2, Type, Video } from "lucide-react";
+import { AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Copy, Frame, GripVertical, Image as ImageIcon, Lock, LockOpen, Pencil, Sticker, Trash2, Type, Video } from "lucide-react";
 import { layerName, type Element } from "@/lib/doc";
 import { FORMATS } from "@/lib/formats";
 import { Button, EmptyState, IconButton } from "@/ui";
@@ -108,6 +108,7 @@ function Properties({ el }: { el: Element }) {
   const format = useEditor((s) => s.format);
   const slideCount = useEditor((s) => s.slideCount);
   const announce = useEditor((s) => s.announce);
+  const align = useEditor((s) => s.alignElement);
   const art = { w: FORMATS[format].width * slideCount, h: FORMATS[format].height };
   const key = (p: string) => ({ key: `field:${el.id}:${p}` });
   const name = layerName(el);
@@ -133,6 +134,24 @@ function Properties({ el }: { el: Element }) {
         />
         <Num label="Height" value={el.h} min={5} disabled={locked || text} readOnly={text} onChange={(n) => update(el.id, { h: Math.max(5, n), w: Math.max(5, (el.w * n) / el.h) }, key("h"))} />
         <Num label="Rotation" value={el.rotation} step={1} min={-360} max={360} disabled={locked} onChange={(n) => update(el.id, { rotation: Math.min(360, Math.max(-360, n)) }, key("r"))} />
+      </div>
+
+      <h3 className="text-sm font-semibold text-ink">Align to slide</h3>
+      <div className="grid grid-cols-6 gap-1" role="group" aria-label="Align to slide">
+        {(
+          [
+            ["left", "Align left", AlignStartVertical],
+            ["centre", "Align centre", AlignVerticalJustifyCenter],
+            ["right", "Align right", AlignEndVertical],
+            ["top", "Align top", AlignStartHorizontal],
+            ["middle", "Align middle", AlignHorizontalJustifyCenter],
+            ["bottom", "Align bottom", AlignEndHorizontal],
+          ] as const
+        ).map(([how, label, Icon]) => (
+          <IconButton key={how} label={label} disabled={locked} onClick={() => align(el.id, how)}>
+            <Icon aria-hidden className="size-4" />
+          </IconButton>
+        ))}
       </div>
 
       <h3 className="text-sm font-semibold text-ink">Order</h3>

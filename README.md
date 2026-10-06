@@ -9,7 +9,7 @@ Status: a working prototype, not a launched product. It runs in two modes, set w
 
 Everything is free: there are no plans, no payments and no limit by plan on slides (up to 500 in a project, which is also bounded by the 2 MB a saved project may take and its 500 layers).
 
-Known gaps: no account screen, no template gallery (the Templates page is a stub; starter layouts need empty photo frames, which don't exist yet), no flip or rotate-90 for photos, no align tools, no video, no text effects beyond the basics, no favicon or app icon, placeholder terms and privacy pages. The editor screens added since the themes work (Themes, Crop, Size, Slides, Stickers, Frames, Adjust, Draw, Cut out, gradient backgrounds, the projects page's Rename, Duplicate and Delete) are covered by tests of their logic and by browser tests that have been written but not run, and nothing has been tested in Safari or on a real phone.
+Known gaps: no template gallery (the Templates page is a stub; starter layouts need empty photo frames, which don't exist yet), no flip or rotate-90 for photos, no video, no text effects beyond the basics, placeholder terms and privacy pages. The editor screens added since the themes work are covered by tests of their logic and by browser tests that have been written but not run, and nothing has been tested in Safari or on a real phone.
 
 ## Run it
 

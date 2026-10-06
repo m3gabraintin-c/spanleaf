@@ -34,7 +34,9 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
             {APP_NAME}
           </Link>
           <div className="flex items-center gap-3">
-            <span className="hidden max-w-48 truncate text-sm text-muted sm:inline">{me.email}</span>
+            <Link href="/app/account" className="hidden max-w-48 truncate text-sm text-muted t-fast hover:text-ink sm:inline">
+              {me.email}
+            </Link>
             <Button
               variant="ghost"
               size="sm"

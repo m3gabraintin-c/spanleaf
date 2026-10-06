@@ -5,7 +5,8 @@ import { inkFor } from "@/lib/colour";
 import { MAX_ELEMENTS, uid, type Doc, type Element, type Gradient, type Pattern } from "@/lib/doc";
 import { makePattern } from "@/lib/pattern";
 import { DEFAULT_PEN, MAX_PEN_SIZE, MIN_PEN_SIZE, type Pen } from "@/lib/stroke";
-import { MAX_SLIDES, type FormatKey } from "@/lib/formats";
+import { FORMATS, MAX_SLIDES, type FormatKey } from "@/lib/formats";
+import { alignedPosition, type Alignment } from "@/lib/align";
 import { duplicateSlide, insertSlide, moveSlide, removeSlide, slideOf } from "@/lib/slides";
 import type { MediaUrls, Project } from "@/data";
 
@@ -69,6 +70,8 @@ interface EditorState {
   deleteSlide: (at: number) => void;
   /** Moves slide from to position to. */
   moveSlide: (from: number, to: number) => void;
+  /** Lines a layer up with an edge or the middle of the slide it is on. Does nothing to a locked layer. */
+  alignElement: (id: string, how: Alignment) => void;
   setBackground: (color: string) => void;
   /** Pass null to remove the pattern. */
   setPattern: (pattern: Pattern | null) => void;
@@ -334,6 +337,18 @@ export const useEditor = create<EditorState>()(
         s.doc = removeSlide(current(s.doc), at);
         s.slideCount--;
         if (s.selectedId && !s.doc.elements.some((e) => e.id === s.selectedId)) s.selectedId = null;
+        touch(s);
+      }),
+
+    alignElement: (id, how) =>
+      set((s) => {
+        const el = s.doc.elements.find((e) => e.id === id);
+        if (!el || el.locked) return;
+        const at = alignedPosition(el, how, s.slideCount, FORMATS[s.format].height);
+        if (at.x === el.x && at.y === el.y) return;
+        remember(s);
+        el.x = at.x;
+        el.y = at.y;
         touch(s);
       }),
 

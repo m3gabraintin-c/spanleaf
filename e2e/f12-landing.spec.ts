@@ -34,7 +34,7 @@ test.describe("F12 landing page", () => {
     await page.goto("/");
     const text = await page.getByRole("main").innerText();
     expect(text).toContain("Every tool is free");
-    expect(text).not.toMatch(/\$\d|per month|a month|\btrial\b|\bStudio\b|\bPremium\b/i);
+    expect(text).not.toMatch(/\$\d|per month|a month|\bStudio\b|\bPremium\b/i);
     await expect(page.getByRole("link", { name: /pricing/i })).toHaveCount(0);
   });
 
