@@ -9,8 +9,9 @@ test.describe("F13 managing projects", () => {
 
     // rename
     await page.getByRole("button", { name: "Rename Alpha" }).click();
-    await page.getByLabel("Name").fill("Beta");
-    await page.getByRole("button", { name: "Save" }).click();
+    const dialog = page.getByRole("dialog", { name: "Rename project" });
+    await dialog.getByRole("textbox", { name: "Name" }).fill("Beta");
+    await dialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Beta", { exact: true })).toBeVisible();
     await expect(page.getByText("Alpha", { exact: true })).toHaveCount(0);
 
@@ -36,6 +37,7 @@ test.describe("F13 managing projects", () => {
     const id = await newProject(page, { name: "Gone" });
     await page.goto("/app");
     await page.getByRole("button", { name: "Delete Gone" }).click();
+    await expect(page.getByRole("status")).toContainText("Deleted");
     await page.goto(`/app/project/${id}`);
     await expect(page.getByText(/doesn't exist|couldn't|not found/i).first()).toBeVisible();
   });

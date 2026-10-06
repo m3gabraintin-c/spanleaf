@@ -75,7 +75,7 @@ test.describe("X autosave, sessions and two tabs", () => {
     const tab2 = await context.newPage();
     await tab2.goto("/app");
     await tab2.getByRole("button", { name: "Sign out" }).click();
-    await tab2.waitForURL("**/");
+    await tab2.waitForURL((u) => u.pathname === "/");
     await page.getByRole("region", { name: "Canvas area" }).focus();
     await page.keyboard.press("Shift+ArrowRight");
     await page.waitForTimeout(2500);

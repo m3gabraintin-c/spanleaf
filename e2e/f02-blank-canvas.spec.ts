@@ -141,6 +141,7 @@ test.describe("F02 start from a blank canvas", () => {
     const id = await newProject(page, { name: "Alice only" });
     await page.goto("/app");
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await signIn(page, "mallory@example.test");
     await page.goto(`/app/project/${id}`);
     await expect(page.getByRole("heading", { name: "Project not found" })).toBeVisible({ timeout: 5000 });

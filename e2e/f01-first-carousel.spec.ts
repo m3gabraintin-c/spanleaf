@@ -74,6 +74,7 @@ test.describe("F01 first-time user makes a carousel", () => {
     await page.goto("/app");
     await expect(page.getByText("Secret trip")).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await page.waitForURL("**/");
     await page.goBack();
     await page.waitForTimeout(800);
@@ -106,6 +107,7 @@ test.describe("F01 first-time user makes a carousel", () => {
     await newProject(page, { name: "Alice private" });
     await page.goto("/app");
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.waitForURL((u) => u.pathname === "/");
     await signIn(page, "bob@example.test");
     await expect(page.getByRole("heading", { name: "Nothing here yet" })).toBeVisible({ timeout: 5000 });
   });
