@@ -49,6 +49,8 @@ export type Layer = {
   adjust?: Adjust | null;
   /** Sticker layers: which sticker, and its colour. */
   sticker?: string;
+  /** Set on stickers the collage shuffle placed, so the next shuffle can replace them without touching yours. */
+  auto?: boolean;
   /** Drawing layers: the line, as fractions of the layer's box. */
   stroke?: StrokeData;
   /** Text layers. */

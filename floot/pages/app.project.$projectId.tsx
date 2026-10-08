@@ -23,6 +23,7 @@ import {
   Redo2,
   RotateCcw,
   RotateCw,
+  Shuffle,
   Smartphone,
   Trash2,
   Type,
@@ -71,6 +72,9 @@ import { ExportOptions, exportSlideVideo, exportSlides, recordingType, renderSli
 import { flipPicture } from "../helpers/flipPicture";
 import { addClip } from "../helpers/videoClips";
 import { track } from "../helpers/analytics";
+import { CollagePlan, applyPlan, cleanPlan, photosOf, randomPlan, shuffleLayout } from "../helpers/collage";
+import { makeThumb } from "../helpers/makeThumb";
+import { CollagePlanError, postCollagePlan } from "../endpoints/collage-plan_POST.schema";
 import styles from "./app.project.$projectId.module.css";
 
 const ALIGN_ICONS: Record<Alignment, { label: string; Icon: typeof AlignStartVertical }> = {
@@ -135,6 +139,7 @@ function Editor({ project }: { project: Project }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [playVideos, setPlayVideos] = useState(false);
+  const [aiCollage, setAiCollage] = useState(true);
   const [pen, setPen] = useState<Pen>({ mode: "pen", color: "#111111", size: 12 });
   const stageRef = useRef<Konva.Stage | null>(null);
   const contentRef = useRef<Konva.Layer | null>(null);
@@ -416,6 +421,42 @@ function Editor({ project }: { project: Project }) {
 
   const setPageNumbers = (pn: PageNumbers | null) => ed.apply((d) => ({ ...d, pageNumbers: pn }));
   const hasVideo = design.layers.some((l) => l.type === "video");
+  const photoCount = photosOf(design).length;
+
+  /**
+   * Shuffles the photos into a new collage. The layout is worked out here; then the AI looks at small copies of the
+   * photos and picks the tilts and where tape and accents go. Without the AI, a random plan is used instead.
+   */
+  const shuffleCollage = async () => {
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const { design: laid, order } = shuffleLayout(latest.current.design, seed);
+    if (order.length === 0) return void toast.message("Add some photos first.");
+    let plan: CollagePlan = randomPlan(order, seed);
+    let usedAi = false;
+    if (aiCollage) {
+      setBusy("Arranging…");
+      try {
+        // The AI sees at most 30 photos; any more keep the random plan.
+        const picked = order.slice(0, 30).map((id) => laid.layers.find((l) => l.id === id)!);
+        const photos = await Promise.all(picked.map(async (l) => ({ id: l.id, thumb: await makeThumb(l.src!), slide: Math.max(0, slideOf(l)), landscape: l.w >= l.h })));
+        const ai = await postCollagePlan({ photos });
+        const aiIds = new Set(picked.map((l) => l.id));
+        plan = {
+          tilts: { ...plan.tilts, ...Object.fromEntries(ai.tilts.map((t) => [t.photoId, t.degrees])) },
+          stickers: [...plan.stickers.filter((s) => !aiIds.has(s.photoId)), ...ai.stickers],
+        };
+        usedAi = true;
+      } catch (e) {
+        if (e instanceof CollagePlanError && e.code === "OUT_OF_CREDITS") console.warn("Collage AI is out of credits; used a random look.");
+        else toast.message("The AI wasn't available, so this is a quick random look. Press Shuffle again to retry.");
+      } finally {
+        setBusy(null);
+      }
+    }
+    ed.apply(() => applyPlan(laid, cleanPlan(plan, order)));
+    go(0);
+    track("collage_shuffle", { photos: order.length, ai: usedAi });
+  };
 
   const changeFormat = (format: FormatKey) => {
     if (format === design.format) return;
@@ -526,6 +567,19 @@ function Editor({ project }: { project: Project }) {
                 </Button>
               )}
               <p className={styles.hint}>Videos: MP4, WebM or MOV, up to 90 seconds and 200 MB. They play muted. To keep the movement, export a slide with a video as a video from the Export button.</p>
+              <div className={styles.shuffleBox}>
+                <Button onClick={() => void shuffleCollage()} disabled={!!busy || photoCount === 0}>
+                  <Shuffle size={16} /> {busy === "Arranging…" ? "Arranging…" : "Shuffle collage"}
+                </Button>
+                <div className={styles.fieldRow}>
+                  <span id="ai-collage">AI picks the tilts and stickers</span>
+                  <Switch aria-labelledby="ai-collage" checked={aiCollage} onCheckedChange={setAiCollage} />
+                </div>
+                <p className={styles.hint}>
+                  Puts your {photoCount === 1 ? "photo" : `${photoCount} photos`} in a new order and a new layout, tilts some of them and adds tape, pins and flowers. Each press gives a different look, and undo goes back.
+                  {aiCollage ? " To do this, small blurry copies of your photos are sent to an AI service. Switch it off to keep everything on your device." : ""}
+                </p>
+              </div>
               {selected?.type === "image" && !selected.src ? (
                 <>
                   <p className={styles.hint}>This is an empty frame. Choose a photo to put in it. It is left out of the exported pictures until it has a photo.</p>

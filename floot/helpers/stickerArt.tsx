@@ -13,6 +13,21 @@ export const STICKERS = [
   { id: "squiggle", name: "Squiggle", w: 360, h: 100, art: (c: string) => `<path d="M12 50c30-60 50 60 80 0s50 60 80 0 50 60 80 0 50 60 80 0" fill="none" stroke="${c}" stroke-width="14" stroke-linecap="round"/>` },
   { id: "dots", name: "Dots", w: 260, h: 100, art: (c: string) => `<g fill="${c}"><circle cx="30" cy="50" r="18"/><circle cx="90" cy="50" r="18"/><circle cx="150" cy="50" r="18"/><circle cx="210" cy="50" r="18"/></g>` },
   { id: "circle", name: "Circle", w: 200, h: 200, art: (c: string) => `<circle cx="100" cy="100" r="94" fill="${c}"/>` },
+  {
+    id: "daisy",
+    name: "Daisy",
+    w: 220,
+    h: 220,
+    art: (c: string) =>
+      `<g transform="translate(110 110)">${Array.from({ length: 12 }, (_, i) => `<ellipse rx="22" ry="62" cy="-48" fill="${c}" stroke="#d9d2c3" stroke-width="2" transform="rotate(${i * 30})"/>`).join("")}<circle r="26" fill="#f2b632"/><circle r="26" fill="none" stroke="#d99a1e" stroke-width="3"/></g>`,
+  },
+  {
+    id: "pin",
+    name: "Pin",
+    w: 120,
+    h: 160,
+    art: (c: string) => `<path d="M60 96 L60 154" stroke="#9a9a9a" stroke-width="6" stroke-linecap="round"/><circle cx="60" cy="56" r="46" fill="${c}"/><circle cx="44" cy="40" r="12" fill="#ffffff" opacity="0.55"/>`,
+  },
 ] as const;
 
 export type StickerId = (typeof STICKERS)[number]["id"];
