@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, MutableRefObject } from "react";
 import Konva from "konva";
-import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, Line, Shape, Transformer } from "react-konva";
+import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, Line, Shape, Transformer, Group } from "react-konva";
+import { Minus, Plus } from "lucide-react";
+import { maskPath } from "../helpers/maskPath";
 import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf } from "../helpers/carouselModel";
 import { clipUrl } from "../helpers/videoClips";
 import { patternTile } from "../helpers/patterns";
@@ -34,8 +36,9 @@ export type Pen = { mode: PenMode; color: string; size: number };
 
 type Props = {
   design: Design;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  /** What is selected. The first is the one the panels show; shift-click adds or removes others. */
+  selectedIds: string[];
+  onSelect: (id: string | null, additive?: boolean) => void;
   onPatch: (id: string, patch: Partial<Layer>, key?: string) => void;
   stageRef: MutableRefObject<Konva.Stage | null>;
   contentRef: MutableRefObject<Konva.Layer | null>;
@@ -57,13 +60,18 @@ type Props = {
  * The wide canvas. Only the part in view is a real canvas, so a project with hundreds of slides stays
  * light: the page scrolls, and the stage moves the other way to match.
  */
-export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase, playVideos }: Props) => {
+const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3];
+
+export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase, playVideos }: Props) => {
   // Dark or light changes the colours of the editing aids. Exports never include them.
   const { mode } = useThemeMode();
   const dark = mode === "dark" || (mode === "auto" && typeof document !== "undefined" && document.body.classList.contains("dark"));
   const scroller = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ w: 0, h: 0 });
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  /** 1 fits a slide's height in view; more is closer. */
+  const [zoom, setZoom] = useState(1);
   const [guides, setGuides] = useState<Guide[]>([]);
   const nodes = useRef(new Map<string, Konva.Node>());
   const transformer = useRef<Konva.Transformer>(null);
@@ -73,9 +81,12 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
 
   const height = FORMATS[design.format].height;
   const total = design.slideCount * SLIDE_WIDTH;
-  const scale = Math.max(0.04, Math.min((view.h - PAD * 2) / height, (view.w - PAD * 2) / SLIDE_WIDTH));
-  const latest = useRef({ design, pen, scale });
-  latest.current = { design, pen, scale };
+  const fit = Math.max(0.04, Math.min((view.h - PAD * 2) / height, (view.w - PAD * 2) / SLIDE_WIDTH));
+  const scale = fit * zoom;
+  const contentH = height * scale + PAD * 2;
+  const fitsTall = contentH <= view.h;
+  const latest = useRef({ design, pen, scale, zoom });
+  latest.current = { design, pen, scale, zoom };
 
   useEffect(() => {
     if (!goTo || !scroller.current) return;
@@ -88,6 +99,37 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
 
   const current = Math.min(design.slideCount - 1, Math.max(0, Math.floor((scrollLeft + view.w / 2 - PAD) / (SLIDE_WIDTH * scale))));
   useEffect(() => onCurrentSlide(current), [current, onCurrentSlide]);
+
+  // Zooming keeps the point that was in the middle in the middle.
+  const zoomTo = (z: number) => {
+    const el = scroller.current;
+    const next = Math.min(ZOOMS[ZOOMS.length - 1], Math.max(ZOOMS[0], z));
+    if (!el || next === zoom) return;
+    const cx = (el.scrollLeft + view.w / 2 - PAD) / scale;
+    const cy = (el.scrollTop + view.h / 2 - PAD) / scale;
+    setZoom(next);
+    requestAnimationFrame(() => el.scrollTo({ left: cx * fit * next + PAD - view.w / 2, top: cy * fit * next + PAD - view.h / 2 }));
+  };
+  const zoomRef = useRef(zoomTo);
+  zoomRef.current = zoomTo;
+  const step = (dir: 1 | -1) => {
+    const at = ZOOMS.indexOf(latest.current.zoom);
+    zoomRef.current(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, at + dir))]);
+  };
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    // Ctrl or Cmd with the wheel, or a trackpad pinch, zooms the canvas instead of the page.
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      step(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+    // step reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const el = scroller.current;
@@ -104,14 +146,18 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
     void document.fonts?.ready.then(() => contentRef.current?.batchDraw());
   }, [contentRef, design.layers]);
 
-  const selected = design.layers.find((l) => l.id === selectedId) ?? null;
+  const selectedSet = new Set(selectedIds);
+  const selected = selectedIds.length === 1 ? (design.layers.find((l) => l.id === selectedIds[0]) ?? null) : null;
+  const multi = selectedIds.length > 1;
   useEffect(() => {
     const tr = transformer.current;
     if (!tr) return;
-    const node = !drawing && selected && !selected.locked ? nodes.current.get(selected.id) : undefined;
-    tr.nodes(node ? [node] : []);
+    const picked = drawing ? [] : design.layers.filter((l) => selectedSet.has(l.id) && !l.locked).map((l) => nodes.current.get(l.id)).filter((n): n is Konva.Node => !!n);
+    tr.nodes(picked);
     tr.getLayer()?.batchDraw();
-  }, [selected, design.layers, scale, drawing]);
+    // selectedSet is rebuilt from selectedIds each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds.join(","), design.layers, scale, drawing]);
 
   const first = Math.max(0, Math.floor((scrollLeft - PAD) / (SLIDE_WIDTH * scale)) - 1);
   const last = Math.min(design.slideCount - 1, Math.ceil((scrollLeft + view.w - PAD) / (SLIDE_WIDTH * scale)) + 1);
@@ -122,7 +168,18 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
   }, [first, last]);
 
   // ---- snapping while a layer is dragged
+  // When several layers are selected, dragging one moves them all by the same amount.
+  const groupDrag = useRef<{ id: string; from: Map<string, { x: number; y: number }> } | null>(null);
   const snapWhileDragging = (layer: Layer, node: Konva.Node, alt: boolean) => {
+    if (multi && selectedSet.has(layer.id)) {
+      if (groupDrag.current?.id !== layer.id) {
+        groupDrag.current = { id: layer.id, from: new Map(latest.current.design.layers.filter((l) => selectedSet.has(l.id) && !l.locked).map((l) => [l.id, { x: l.x, y: l.y }])) };
+      }
+      const dx = node.x() - layer.x;
+      const dy = node.y() - layer.y;
+      for (const [id, p] of groupDrag.current.from) if (id !== layer.id) nodes.current.get(id)?.position({ x: p.x + dx, y: p.y + dy });
+      return;
+    }
     if (alt || layer.rotation !== 0) return setGuides((g) => (g.length ? [] : g));
     const d = latest.current.design;
     const slide = Math.min(d.slideCount - 1, Math.max(0, slideOf(layer)));
@@ -203,11 +260,32 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
   const gradient = design.gradient;
   const line = gradient ? gradientLine(gradient.angle, total, height) : null;
   const textSelected = selected?.type === "text";
-  const common = { nodes: nodes.current, onSelect, onPatch, onDragMove: snapWhileDragging, onDragEnd: () => setGuides([]), disabled: drawing };
+  // Changes to several layers at once share an undo step.
+  const patch = multi ? (id: string, p: Partial<Layer>) => onPatch(id, p, "group") : onPatch;
+  const endDrag = () => {
+    setGuides([]);
+    const g = groupDrag.current;
+    groupDrag.current = null;
+    if (!g) return;
+    for (const id of g.from.keys()) {
+      const n = nodes.current.get(id);
+      if (id !== g.id && n) onPatch(id, { x: Math.round(n.x() * 100) / 100, y: Math.round(n.y() * 100) / 100 }, "group");
+    }
+  };
+  const common = { nodes: nodes.current, onSelect, onPatch: patch, onDragMove: snapWhileDragging, onDragEnd: endDrag, disabled: drawing };
 
   return (
-    <div ref={scroller} className={`${styles.scroller} ${className ?? ""}`} style={{ touchAction: drawing ? "none" : undefined }} onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}>
-      <div className={styles.spacer} style={{ width: total * scale + PAD * 2, height: view.h }}>
+    <div className={`${styles.wrap} ${className ?? ""}`}>
+    <div
+      ref={scroller}
+      className={styles.scroller}
+      style={{ touchAction: drawing ? "none" : undefined }}
+      onScroll={(e) => {
+        setScrollLeft(e.currentTarget.scrollLeft);
+        setScrollTop(e.currentTarget.scrollTop);
+      }}
+    >
+      <div className={styles.spacer} style={{ width: total * scale + PAD * 2, height: Math.max(view.h, contentH) }}>
         <div className={styles.stick} style={{ width: view.w, height: view.h }}>
           {view.w > 0 && (
             <Stage
@@ -215,7 +293,7 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
               width={view.w}
               height={view.h}
               x={PAD - scrollLeft}
-              y={Math.max(PAD, (view.h - height * scale) / 2)}
+              y={fitsTall ? Math.max(PAD, (view.h - height * scale) / 2) : PAD - scrollTop}
               scaleX={scale}
               scaleY={scale}
               onMouseDown={(e) => {
@@ -319,13 +397,25 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
         </div>
       </div>
     </div>
+    <div className={styles.zoom} role="group" aria-label="Zoom">
+      <button type="button" aria-label="Zoom out" disabled={zoom <= ZOOMS[0]} onClick={() => step(-1)}>
+        <Minus size={14} />
+      </button>
+      <button type="button" className={styles.zoomLevel} aria-label="Fit a slide in view" title="Fit a slide in view" onClick={() => zoomTo(1)}>
+        {Math.round(zoom * 100)}%
+      </button>
+      <button type="button" aria-label="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]} onClick={() => step(1)}>
+        <Plus size={14} />
+      </button>
+    </div>
+    </div>
   );
 };
 
 type NodeProps = {
   layer: Layer;
   nodes: Map<string, Konva.Node>;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string | null, additive?: boolean) => void;
   onPatch: (id: string, patch: Partial<Layer>, key?: string) => void;
   onDragMove: (layer: Layer, node: Konva.Node, alt: boolean) => void;
   onDragEnd: () => void;
@@ -509,7 +599,7 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
           ctx.closePath();
           ctx.fillShape(shape);
         }}
-        onMouseDown={() => !disabled && onSelect(layer.id)}
+        onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
         onTouchStart={() => !disabled && onSelect(layer.id)}
         onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
         onDragEnd={(e) => {
@@ -525,6 +615,55 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
           onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.max(24, Math.round(n.width() * sx)), h: Math.max(24, Math.round(n.height() * sy)), rotation: r2(n.rotation()) });
         }}
       />
+    );
+  }
+
+  // A photo in a shape: a group clipped to the shape moves and turns as one, with an optional outline in the
+  // border colour drawn on top. The picture inside keeps its crop and colour changes.
+  if (layer.mask && layer.mask !== "none" && layer.type === "image") {
+    const shape = layer.mask;
+    return (
+      <Group
+        ref={(n) => {
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        x={layer.x}
+        y={layer.y}
+        rotation={layer.rotation}
+        opacity={layer.opacity ?? 1}
+        draggable={!layer.locked && !disabled}
+        onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
+        onTouchStart={() => !disabled && onSelect(layer.id)}
+        onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+        onDragEnd={(e) => {
+          onDragEnd();
+          onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+        }}
+        onTransformEnd={(e) => {
+          const n = e.target;
+          const sx = n.scaleX();
+          const sy = n.scaleY();
+          n.scaleX(1);
+          n.scaleY(1);
+          onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.max(24, Math.round(layer.w * sx)), h: Math.max(24, Math.round(layer.h * sy)), rotation: r2(n.rotation()) });
+        }}
+      >
+        <Group clipFunc={(ctx) => maskPath(ctx as unknown as Parameters<typeof maskPath>[0], shape, layer.w, layer.h)}>
+          <KImage ref={(n) => void (ref.current = n)} image={img ?? undefined} crop={crop} width={layer.w} height={layer.h} />
+        </Group>
+        {layer.border && layer.border.width > 0 && (
+          <Shape
+            listening={false}
+            stroke={layer.border.color}
+            strokeWidth={layer.border.width}
+            sceneFunc={(ctx, s) => {
+              maskPath(ctx as unknown as Parameters<typeof maskPath>[0], shape, layer.w, layer.h);
+              ctx.strokeShape(s);
+            }}
+          />
+        )}
+      </Group>
     );
   }
 
@@ -552,7 +691,7 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
       shadowOffsetY={10}
       shadowOpacity={0.25}
       draggable={!layer.locked && !disabled}
-      onMouseDown={() => !disabled && onSelect(layer.id)}
+      onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
       onTouchStart={() => !disabled && onSelect(layer.id)}
       onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
       onDragEnd={(e) => {
@@ -571,9 +710,17 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
   );
 };
 
-const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => (
+const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
+  const ref = useRef<Konva.Text | null>(null);
+  // A font is downloaded the first time it is used, so draw again once it has arrived.
+  useEffect(() => {
+    const family = layer.fontFamily || "Inter Tight";
+    void document.fonts?.load(`${layer.bold ? "700" : "400"} 64px "${family}"`).then(() => ref.current?.getLayer()?.batchDraw(), () => undefined);
+  }, [layer.fontFamily, layer.bold]);
+  return (
   <KText
     ref={(n) => {
+      ref.current = n;
       if (n) nodes.set(layer.id, n);
       else nodes.delete(layer.id);
     }}
@@ -599,7 +746,7 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     width={layer.w}
     rotation={layer.rotation}
     draggable={!layer.locked && !disabled}
-    onMouseDown={() => !disabled && onSelect(layer.id)}
+    onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
     onTouchStart={() => !disabled && onSelect(layer.id)}
     onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
     onDragEnd={(e) => {
@@ -615,7 +762,8 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
       onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w, h: measureText({ ...layer, w }), rotation: r2(n.rotation()) });
     }}
   />
-);
+  );
+};
 
 const DrawingNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
   if (!layer.stroke) return null;
@@ -646,7 +794,7 @@ const DrawingNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
         tracePath(ctx, pts);
         ctx.strokeShape(shape);
       }}
-      onMouseDown={() => !disabled && onSelect(layer.id)}
+      onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
       onTouchStart={() => !disabled && onSelect(layer.id)}
       onDragMove={(e) => onDragMove(layer, e.target, true)}
       onDragEnd={(e) => {

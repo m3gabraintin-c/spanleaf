@@ -81,6 +81,19 @@
   box-shadow: var(--shadow-md);
 }
 
+.thumb {
+  overflow: hidden;
+  position: relative;
+}
+
+.thumbImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .cardTitle {
   margin: var(--spacing-1) 0 0;
   font-weight: 600;

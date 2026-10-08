@@ -1,0 +1,24 @@
+.body {
+  margin: var(--spacing-4) 0;
+  line-height: 1.6;
+  font-size: 0.9375rem;
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.dot,
+.dotOn {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+
+.dotOn {
+  background: var(--primary);
+}

@@ -1,12 +1,60 @@
+.wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .scroller {
   position: relative;
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
   background: var(--muted);
   overscroll-behavior-x: contain;
+}
+
+.zoom {
+  position: absolute;
+  left: var(--spacing-3);
+  bottom: var(--spacing-3);
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 var(--spacing-2);
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.zoom button:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.zoomLevel {
+  min-width: 3.25rem;
 }
 
 .spacer {

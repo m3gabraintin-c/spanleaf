@@ -53,6 +53,8 @@ export type Layer = {
   auto?: boolean;
   /** Set on decorations a theme placed, so choosing another theme replaces them. */
   themeDecor?: boolean;
+  /** Photo layers: a shape to show the photo in. */
+  mask?: MaskShape;
   /** Drawing layers: the line, as fractions of the layer's box. */
   stroke?: StrokeData;
   /** Text layers. */
@@ -79,7 +81,12 @@ export type Design = {
   pageNumbers?: PageNumbers | null;
   /** A pattern over the background colour or gradient, such as grid paper. */
   pattern?: Pattern | null;
+  /** The post's caption, kept with the carousel so it can be copied when posting. */
+  caption?: string;
 };
+
+export const MASK_SHAPES = ["none", "circle", "heart", "arch", "star", "torn"] as const;
+export type MaskShape = (typeof MASK_SHAPES)[number];
 
 export const PATTERN_KINDS = ["grid", "dots", "lines", "stripes", "checks", "grain"] as const;
 export type Pattern = { kind: (typeof PATTERN_KINDS)[number]; color: string; opacity: number };
@@ -112,6 +119,8 @@ export type Project = {
   /** Set when the project is in the bin. */
   deletedAt: number | null;
   design: Design;
+  /** A small picture of the first slide, for the projects page. */
+  thumb?: string;
 };
 
 export const uid = () => crypto.randomUUID();
@@ -256,6 +265,16 @@ export const gradientLine = (angle: number, w: number, h: number) => {
 export const FONTS = [
   { label: "Inter Tight", value: "Inter Tight" },
   { label: "Fraunces", value: "Fraunces" },
+  { label: "Playfair Display", value: "Playfair Display" },
+  { label: "DM Serif Display", value: "DM Serif Display" },
+  { label: "Lora", value: "Lora" },
+  { label: "Space Grotesk", value: "Space Grotesk" },
+  { label: "Bebas Neue (tall capitals)", value: "Bebas Neue" },
+  { label: "Archivo Black (heavy)", value: "Archivo Black" },
+  { label: "Caveat (handwriting)", value: "Caveat" },
+  { label: "Permanent Marker", value: "Permanent Marker" },
+  { label: "Pacifico (script)", value: "Pacifico" },
+  { label: "Special Elite (typewriter)", value: "Special Elite" },
   { label: "Georgia", value: "Georgia" },
   { label: "Courier", value: "Courier New" },
 ];

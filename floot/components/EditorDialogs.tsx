@@ -6,6 +6,8 @@ import { Slider } from "./Slider";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./Dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
 import type { ExportOptions } from "../helpers/exportSlides";
+import { Textarea } from "./Textarea";
+import { instagramChecks } from "../helpers/instagram";
 import styles from "./EditorDialogs.module.css";
 
 /** Reads "1-3, 5" into slide numbers counting from 0. Numbers outside 1..total are dropped. */
@@ -32,6 +34,9 @@ export const ExportDialog = ({
   busy,
   onExport,
   onExportVideo,
+  caption,
+  onCaption,
+  storyShape,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -42,14 +47,22 @@ export const ExportDialog = ({
   busy: string | null;
   onExport: (o: ExportOptions) => void;
   onExportVideo: () => void;
+  caption: string;
+  onCaption: (text: string) => void;
+  /** The slides are 9:16, which Instagram crops in a feed carousel. */
+  storyShape: boolean;
 }) => {
   const [which, setWhich] = useState<"all" | "current" | "some">("all");
   const [list, setList] = useState("");
   const [format, setFormat] = useState<"png" | "jpeg">("png");
   const [quality, setQuality] = useState(92);
   const [width, setWidth] = useState<1080 | 2160>(1080);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [caption]);
   const chosen = which === "all" ? undefined : which === "current" ? [current] : parseSlideList(list, slideCount);
   const none = which === "some" && (chosen?.length ?? 0) === 0;
+  const count = chosen?.length ?? slideCount;
+  const checks = instagramChecks({ caption, slides: count, storyShape });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -116,6 +129,35 @@ export const ExportDialog = ({
               </Button>
               {!canRecord && <small>This browser can't record video. Try Chrome, Edge or a recent Safari.</small>}
             </div>
+          )}
+          <div className={styles.field}>
+            <span id="caption-l">Caption</span>
+            <Textarea aria-labelledby="caption-l" rows={4} value={caption} placeholder="Write the caption here, then copy it when you post." onChange={(e) => onCaption(e.target.value)} />
+            <div className={styles.captionRow}>
+              <small>
+                {checks.characters} of 2,200 characters · {checks.hashtags} of 30 hashtags
+              </small>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!caption.trim()}
+                onClick={() =>
+                  void navigator.clipboard.writeText(caption).then(
+                    () => setCopied(true),
+                    () => setCopied(false),
+                  )
+                }
+              >
+                {copied ? "Copied" : "Copy caption"}
+              </Button>
+            </div>
+          </div>
+          {checks.warnings.length > 0 && (
+            <ul className={styles.warnings} aria-label="Instagram checks">
+              {checks.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
           )}
         </div>
         <DialogFooter>
@@ -237,6 +279,10 @@ export const SHORTCUTS: [string, string][] = [
   ["Ctrl or ⌘ + Z", "Undo"],
   ["Ctrl or ⌘ + Shift + Z, or Ctrl + Y", "Redo"],
   ["Ctrl or ⌘ + D", "Duplicate the selected layer"],
+  ["Shift + click", "Add a layer to the selection, or take it out"],
+  ["Ctrl or ⌘ + A", "Select everything on the slide in view"],
+  ["Ctrl or ⌘ + C, X, V", "Copy, cut and paste, also onto another slide"],
+  ["Ctrl or ⌘ + scroll, or pinch", "Zoom the canvas"],
   ["Delete or Backspace", "Delete the selected layer"],
   ["Arrow keys", "Nudge the selected layer 1 pixel"],
   ["Shift + arrow keys", "Nudge 10 pixels"],
@@ -247,7 +293,7 @@ export const SHORTCUTS: [string, string][] = [
   ["?", "Show these shortcuts"],
 ];
 
-export const ShortcutsDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) => (
+export const ShortcutsDialog = ({ open, onOpenChange, onTour }: { open: boolean; onOpenChange: (o: boolean) => void; onTour: () => void }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent>
       <DialogHeader>
@@ -264,6 +310,17 @@ export const ShortcutsDialog = ({ open, onOpenChange }: { open: boolean; onOpenC
           </div>
         ))}
       </dl>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onClick={() => {
+            onOpenChange(false);
+            onTour();
+          }}
+        >
+          Show the tour again
+        </Button>
+      </DialogFooter>
     </DialogContent>
   </Dialog>
 );

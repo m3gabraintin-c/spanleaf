@@ -45,6 +45,7 @@ import type { Pen } from "../components/CarouselCanvas";
 import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel } from "../components/EditorPanels";
 import { ExportDialog, PhonePreview, ShortcutsDialog } from "../components/EditorDialogs";
 import { CutoutDialog } from "../components/CutoutDialog";
+import { FirstRunTour } from "../components/FirstRunTour";
 import { STICKERS, stickerSrc } from "../helpers/stickerArt";
 import { applyTheme, arrangePhotos } from "../helpers/themes";
 import {
@@ -67,7 +68,7 @@ import {
   rotatedBy,
   uid,
 } from "../helpers/carouselModel";
-import { getProject, saveProject } from "../helpers/projectStorage";
+import { StorageFullError, getProject, saveProject } from "../helpers/projectStorage";
 import { useEditorState } from "../helpers/useEditorState";
 import { preparePicture } from "../helpers/preparePicture";
 import { measureText } from "../helpers/measureText";
@@ -146,6 +147,7 @@ function Editor({ project }: { project: Project }) {
   const [aiCollage, setAiCollage] = useState(true);
   const [myStickers, setMyStickers] = useState<MySticker[]>([]);
   const [cutoutSource, setCutoutSource] = useState<string | null>(null);
+  const [tourAgain, setTourAgain] = useState(false);
   const [pen, setPen] = useState<Pen>({ mode: "pen", color: "#111111", size: 12 });
   const stageRef = useRef<Konva.Stage | null>(null);
   const contentRef = useRef<Konva.Layer | null>(null);
@@ -160,21 +162,82 @@ function Editor({ project }: { project: Project }) {
   const { design, selectedId } = ed;
   const drawing = tab === "draw";
   const height = FORMATS[design.format].height;
-  const selected = design.layers.find((l) => l.id === selectedId) ?? null;
+  // ---- selection: one layer, or several with shift-click, Ctrl or Cmd + A, or by dragging them together
+  const [also, setAlso] = useState<string[]>([]);
+  const selectedIds = selectedId ? [selectedId, ...also.filter((id) => id !== selectedId && design.layers.some((l) => l.id === id))] : [];
+  const picked = design.layers.filter((l) => selectedIds.includes(l.id));
+  const selected = picked.length === 1 ? picked[0] : null;
+  const selectOnly = (id: string | null) => {
+    setAlso([]);
+    ed.select(id);
+  };
+  const selectFromCanvas = (id: string | null, additive?: boolean) => {
+    if (!additive || !id) return selectOnly(id);
+    const next = selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+    ed.select(next[0] ?? null);
+    setAlso(next.slice(1));
+  };
+  /** Everything on the slide in view. */
+  const selectAll = () => {
+    const ids = design.layers.filter((l) => slideOf(l) === current).map((l) => l.id);
+    ed.select(ids[0] ?? null);
+    setAlso(ids.slice(1));
+  };
+  const clipboard = useRef<{ layers: Layer[]; slide: number } | null>(null);
+  const copyPicked = () => {
+    clipboard.current = { layers: structuredClone(picked), slide: Math.max(0, slideOf(picked[0])) };
+    toast.message(picked.length === 1 ? "Copied." : `Copied ${picked.length} layers.`);
+  };
+  /** Pastes onto the slide in view, where they were on their own slide, or nudged by offset when pasting in place. */
+  const pasteHere = (offset = 0) => {
+    const c = clipboard.current;
+    if (!c) return;
+    const dx = (current - c.slide) * SLIDE_WIDTH + offset;
+    const fresh = c.layers.map((l) => ({ ...l, id: uid(), x: l.x + dx, y: l.y + offset, auto: undefined, themeDecor: undefined }));
+    if (design.layers.length + fresh.length > MAX_LAYERS) return void toast.error(`That would pass the limit of ${MAX_LAYERS} layers.`);
+    ed.addLayers(fresh);
+    ed.select(fresh[0].id);
+    setAlso(fresh.slice(1).map((l) => l.id));
+  };
+  const removePicked = () => {
+    ed.removeLayers(picked.map((l) => l.id));
+    setAlso([]);
+  };
   const go = useCallback((index: number) => setGoTo({ index, nonce: Math.random() }), []);
 
   useEffect(() => track("project_opened", { slides: project.design.slideCount }), [project.design.slideCount]);
   useEffect(() => void listMyStickers().then(setMyStickers, () => setMyStickers([])), []);
 
   // ---- saving: one second after the last change, and when the tab goes away
+  const thumb = useRef<{ src?: string; at: number }>({ src: project.thumb, at: 0 });
+  /** A small picture of the first slide, made from the canvas as it is, at most every few seconds. */
+  const projectPreview = () => {
+    const stage = stageRef.current;
+    const content = contentRef.current;
+    if (!stage || !content || Date.now() - thumb.current.at < 4000) return thumb.current.src;
+    try {
+      const s = stage.scaleX();
+      thumb.current = {
+        at: Date.now(),
+        src: content.toDataURL({ x: stage.x(), y: stage.y(), width: SLIDE_WIDTH * s, height: FORMATS[latest.current.design.format].height * s, pixelRatio: 300 / (SLIDE_WIDTH * s), mimeType: "image/jpeg", quality: 0.7 }),
+      };
+    } catch {
+      /* a picture that can't be drawn just keeps the old preview */
+    }
+    return thumb.current.src;
+  };
+
   const persist = useCallback(async () => {
     setSave("saving");
     try {
-      await saveProject({ ...project, title: latest.current.title.trim() || "Untitled", design: latest.current.design });
+      await saveProject({ ...project, title: latest.current.title.trim() || "Untitled", design: latest.current.design, thumb: projectPreview() });
       setSave("saved");
-    } catch {
+    } catch (e) {
       setSave("failed");
+      if (e instanceof StorageFullError) toast.error(e.message, { id: "storage-full", duration: 10000 });
     }
+    // projectPreview reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
   useEffect(() => {
@@ -222,6 +285,23 @@ function Editor({ project }: { project: Project }) {
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         ed.redo();
+      } else if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAll();
+      } else if (mod && e.key.toLowerCase() === "c" && picked.length) {
+        e.preventDefault();
+        copyPicked();
+      } else if (mod && e.key.toLowerCase() === "x" && picked.length) {
+        e.preventDefault();
+        copyPicked();
+        removePicked();
+      } else if (mod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        pasteHere();
+      } else if (mod && e.key.toLowerCase() === "d" && picked.length > 1) {
+        e.preventDefault();
+        copyPicked();
+        pasteHere(40);
       } else if (mod && e.key.toLowerCase() === "d" && selected) {
         e.preventDefault();
         ed.duplicateLayer(selected.id);
@@ -233,25 +313,25 @@ function Editor({ project }: { project: Project }) {
       } else if (e.key.toLowerCase() === "p") {
         e.preventDefault();
         setPreviewOpen(true);
-      } else if (e.key === "Escape" && selected) {
-        ed.select(null);
+      } else if (e.key === "Escape" && picked.length) {
+        selectOnly(null);
       } else if (selected && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         ed.reorder(selected.id, e.key === "]" ? "forward" : "backward");
-      } else if (selected && (e.key === "Delete" || e.key === "Backspace")) {
+      } else if (picked.length && (e.key === "Delete" || e.key === "Backspace")) {
         e.preventDefault();
-        ed.removeLayer(selected.id);
-      } else if (selected && !selected.locked && e.key.startsWith("Arrow")) {
+        removePicked();
+      } else if (picked.length && e.key.startsWith("Arrow")) {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        ed.patchLayer(selected.id, { x: selected.x + dx, y: selected.y + dy }, "nudge");
+        ed.patchMany(Object.fromEntries(picked.map((l) => [l.id, { x: l.x + dx, y: l.y + dy }])), "nudge");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ed, selected]);
+  });
 
   // ---- adding things
   const addPhotos = async (list: FileList | null) => {
@@ -553,16 +633,20 @@ function Editor({ project }: { project: Project }) {
         busy={busy}
         onExport={(o) => void runExport(o)}
         onExportVideo={() => void runVideoExport()}
+        caption={design.caption ?? ""}
+        onCaption={(text) => ed.apply((d) => ({ ...d, caption: text.slice(0, 5000) }), "caption")}
+        storyShape={design.format === "story_9_16"}
       />
       <PhonePreview open={previewOpen} onOpenChange={setPreviewOpen} slideCount={design.slideCount} aspect={SLIDE_WIDTH / height} start={current} render={renderForPreview} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} onTour={() => setTourAgain(true)} />
+      <FirstRunTour forceOpen={tourAgain} onClose={() => setTourAgain(false)} />
 
       <div className={styles.body}>
         <CarouselCanvas
           className={styles.canvas}
           design={design}
-          selectedId={selectedId}
-          onSelect={ed.select}
+          selectedIds={selectedIds}
+          onSelect={selectFromCanvas}
           onPatch={ed.patchLayer}
           stageRef={stageRef}
           contentRef={contentRef}
@@ -956,7 +1040,43 @@ function Editor({ project }: { project: Project }) {
             </TabsContent>
 
             <TabsContent value="layers" className={styles.tab}>
-              {selected ? (
+              {picked.length > 1 ? (
+                <div className={styles.fields}>
+                  <h2 className={styles.subhead}>{picked.length} layers selected</h2>
+                  <p className={styles.hint}>Drag any of them to move them all. Shift-click a layer to add or remove it. Ctrl or ⌘ + C and V copy them, also onto another slide.</p>
+                  <div className={styles.alignRow} role="group" aria-label="Align each to its slide">
+                    {ALIGNMENTS.map((how) => {
+                      const { label, Icon } = ALIGN_ICONS[how];
+                      return (
+                        <Button key={how} variant="outline" size="icon-sm" aria-label={`${label}, each`} title={`${label}, each`} onClick={() => picked.forEach((l) => ed.align(l.id, how))}>
+                          <Icon size={14} />
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <div className={styles.grid2}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        copyPicked();
+                        pasteHere(40);
+                      }}
+                    >
+                      <Copy size={14} /> Duplicate all
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => ed.patchMany(Object.fromEntries(picked.map((l) => [l.id, { locked: true }])))}>
+                      <Lock size={14} /> Lock all
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={removePicked}>
+                      <Trash2 size={14} /> Delete all
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => selectOnly(null)}>
+                      Deselect
+                    </Button>
+                  </div>
+                </div>
+              ) : selected ? (
                 <div className={styles.fields}>
                   <h2 className={styles.subhead}>{selected.name}</h2>
                   <h3 className={styles.subhead}>Align to slide {slideOf(selected) + 1}</h3>
@@ -1019,9 +1139,10 @@ function Editor({ project }: { project: Project }) {
                       <button
                         type="button"
                         className={styles.layerButton}
-                        aria-pressed={l.id === selectedId}
-                        onClick={() => {
-                          ed.select(l.id);
+                        aria-pressed={selectedIds.includes(l.id)}
+                        onClick={(e) => {
+                          if (e.shiftKey) return selectFromCanvas(l.id, true);
+                          selectOnly(l.id);
                           go(Math.max(0, Math.min(design.slideCount - 1, slideOf(l))));
                         }}
                       >

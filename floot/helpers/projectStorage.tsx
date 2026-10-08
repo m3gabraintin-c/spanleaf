@@ -36,8 +36,44 @@ export const getProject = async (id: string): Promise<Project | null> => {
   return p && !p.deletedAt ? p : null;
 };
 
+/** Thrown when the browser has no room left to save. */
+export class StorageFullError extends Error {
+  constructor() {
+    super("This browser is out of space for Spanleaf. Delete projects you don't need, or download a backup and remove large videos.");
+  }
+}
+
+const isQuota = (e: unknown) => e instanceof DOMException && (e.name === "QuotaExceededError" || e.code === 22);
+
 export const saveProject = async (p: Project): Promise<void> => {
-  await set(KEY(p.id), { ...p, updatedAt: Date.now() });
+  try {
+    await set(KEY(p.id), { ...p, updatedAt: Date.now() });
+  } catch (e) {
+    throw isQuota(e) ? new StorageFullError() : e;
+  }
+};
+
+/** How much of the browser's space this site uses, when the browser says. */
+export const storageUse = async (): Promise<{ used: number; quota: number } | null> => {
+  try {
+    const est = await navigator.storage?.estimate?.();
+    return est?.usage != null && est.quota ? { used: est.usage, quota: est.quota } : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Puts an imported project in as a new one, with new ids so it never clashes with an existing project. */
+export const addImportedProject = async (p: Omit<Project, "id" | "createdAt" | "updatedAt" | "deletedAt">): Promise<Project> => {
+  const now = Date.now();
+  const fresh: Project = { ...p, id: uid(), createdAt: now, updatedAt: now, deletedAt: null };
+  fresh.design = { ...fresh.design, layers: fresh.design.layers.map((l) => ({ ...l, id: uid() })) };
+  try {
+    await set(KEY(fresh.id), fresh);
+  } catch (e) {
+    throw isQuota(e) ? new StorageFullError() : e;
+  }
+  return fresh;
 };
 
 export const createProject = async (

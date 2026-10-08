@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { toast } from "sonner";
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
 import { Skeleton } from "../components/Skeleton";
@@ -19,7 +19,10 @@ import {
   listProjects,
   renameProject,
   restoreProject,
+  storageUse,
 } from "../helpers/projectStorage";
+import { backupFile, downloadBlob, restoreFile } from "../helpers/projectFiles";
+import { useRef } from "react";
 import styles from "./app.module.css";
 
 const when = (t: number) =>
@@ -31,6 +34,8 @@ export default function ProjectsPage() {
   const [failed, setFailed] = useState(false);
   const [making, setMaking] = useState(false);
   const [renaming, setRenaming] = useState<Project | null>(null);
+  const [space, setSpace] = useState<{ used: number; quota: number } | null>(null);
+  const opener = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(
     () =>
@@ -38,6 +43,7 @@ export default function ProjectsPage() {
         (p) => {
           setProjects(p);
           setFailed(false);
+          void storageUse().then(setSpace);
         },
         () => setFailed(true),
       ),
@@ -63,6 +69,24 @@ export default function ProjectsPage() {
       });
     });
 
+  const backup = async (p: Project) => {
+    try {
+      const { blob, name, missingVideos } = await backupFile(p);
+      downloadBlob(blob, name);
+      track("project_backup", { slides: p.design.slideCount });
+      toast.success(missingVideos ? `Backup downloaded. ${missingVideos} video${missingVideos === 1 ? " wasn't" : "s weren't"} in this browser, so they're not in it.` : "Backup downloaded. Keep it somewhere safe.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The backup couldn't be made.");
+    }
+  };
+
+  const open = (file: File) =>
+    attempt(async () => {
+      const p = await restoreFile(file);
+      track("project_restored", { slides: p.design.slideCount });
+      toast.success(`Opened “${p.title}”.`);
+    });
+
   return (
     <div className={styles.page}>
       <Helmet>
@@ -74,6 +98,21 @@ export default function ProjectsPage() {
         </Link>
         <div className={styles.headerActions}>
           <ThemeModeSwitch />
+          <input
+            ref={opener}
+            type="file"
+            accept=".spanleaf,application/json"
+            hidden
+            aria-label="Choose a backup file"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void open(f);
+            }}
+          />
+          <Button variant="outline" onClick={() => opener.current?.click()}>
+            <Upload size={16} /> Open a backup
+          </Button>
           <Button onClick={() => setMaking(true)}>
             <Plus size={16} /> New carousel
           </Button>
@@ -82,7 +121,15 @@ export default function ProjectsPage() {
 
       <main className={styles.main}>
         <h1 className={styles.title}>Your carousels</h1>
-        <p className={styles.sub}>Saved in this browser. Nothing is uploaded, and everything is free.</p>
+        <p className={styles.sub}>
+          Saved in this browser only. Download a backup of anything you'd hate to lose: clearing site data, or a different device, means starting again without one.
+          {space && ` This site is using ${(space.used / 1e6).toFixed(0)} MB of about ${(space.quota / 1e9).toFixed(1)} GB.`}
+        </p>
+        {space && space.used / space.quota > 0.8 && (
+          <p role="alert" className={styles.notice}>
+            Storage is nearly full. Download backups, then delete projects with large videos to make room.
+          </p>
+        )}
 
         {failed ? (
           <div role="alert" className={styles.notice}>
@@ -113,14 +160,19 @@ export default function ProjectsPage() {
               <li key={p.id} className={styles.card}>
                 <Link to={`/app/project/${p.id}`} className={styles.cardLink}>
                   <div className={styles.thumb}>
-                    {p.design.slideCount} {p.design.slideCount === 1 ? "slide" : "slides"} · {FORMATS[p.design.format].label}
+                    {p.thumb ? <img src={p.thumb} alt="" className={styles.thumbImg} /> : <span>No preview yet</span>}
                   </div>
                   <p className={styles.cardTitle}>{p.title}</p>
-                  <p className={styles.cardMeta}>Edited {when(p.updatedAt)}</p>
+                  <p className={styles.cardMeta}>
+                    {p.design.slideCount} {p.design.slideCount === 1 ? "slide" : "slides"} · {FORMATS[p.design.format].label} · Edited {when(p.updatedAt)}
+                  </p>
                 </Link>
                 <div className={styles.actions} role="group" aria-label={`Actions for ${p.title}`}>
                   <Button variant="ghost" size="icon-sm" aria-label={`Rename ${p.title}`} onClick={() => setRenaming(p)}>
                     <Pencil size={14} />
+                  </Button>
+                  <Button variant="ghost" size="icon-sm" aria-label={`Download a backup of ${p.title}`} title="Download a backup" onClick={() => void backup(p)}>
+                    <Download size={14} />
                   </Button>
                   <Button variant="ghost" size="icon-sm" aria-label={`Duplicate ${p.title}`} onClick={() => void attempt(async () => void (await duplicateProject(p.id)))}>
                     <Copy size={14} />

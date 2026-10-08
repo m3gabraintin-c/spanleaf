@@ -26,6 +26,11 @@ export default function HomePage() {
       <Helmet>
         <title>Spanleaf - free carousel maker</title>
         <meta name="description" content="Make a seamless photo carousel for Instagram: one long canvas, as many slides as you need, exported as plain PNGs. Free, with no account." />
+        <meta property="og:title" content="Spanleaf - free carousel maker" />
+        <meta property="og:description" content="Seamless Instagram carousels made at your desk: collage layouts, 16 themes, your own cut-out stickers. Free, no account." />
+        <meta property="og:image" content="https://hessian.floot.app/_cdn/static/brand/og.png" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
       </Helmet>
 
       <header className={styles.header}>

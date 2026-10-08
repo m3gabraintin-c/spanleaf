@@ -2,7 +2,7 @@ import { Button } from "./Button";
 import { Slider } from "./Slider";
 import { Switch } from "./Switch";
 import { Input } from "./Input";
-import { Layer } from "../helpers/carouselModel";
+import { Layer, MASK_SHAPES } from "../helpers/carouselModel";
 import { ADJUST_PRESETS, MAX_ZOOM, NO_ADJUST, isAdjusted } from "../helpers/photoStyle";
 import { PEN_COLOURS, PenMode } from "../helpers/strokes";
 import { STICKERS, STICKER_COLOURS, stickerSrc } from "../helpers/stickerArt";
@@ -39,6 +39,14 @@ export const PhotoStylePanel = ({ layer, onPatch, onFlip }: { layer: Layer; onPa
       <Button variant="outline" size="sm" disabled={off} onClick={() => onPatch({ crop: undefined })}>
         Fill the frame
       </Button>
+      <h3 className={styles.head}>Shape</h3>
+      <div className={styles.chips} role="group" aria-label="Photo shape">
+        {MASK_SHAPES.map((m) => (
+          <Button key={m} size="sm" variant={(layer.mask ?? "none") === m ? "primary" : "outline"} disabled={off} onClick={() => onPatch({ mask: m === "none" ? undefined : m })}>
+            {{ none: "Rectangle", circle: "Circle", heart: "Heart", arch: "Arch", star: "Star", torn: "Torn paper" }[m]}
+          </Button>
+        ))}
+      </div>
       <div className={styles.chips} role="group" aria-label="Flip">
         <Button variant="outline" size="sm" disabled={off} onClick={() => onFlip("horizontal")}>
           Flip left to right

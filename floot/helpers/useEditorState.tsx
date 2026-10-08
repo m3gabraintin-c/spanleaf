@@ -128,7 +128,19 @@ export const useEditorState = (initial: Design) => {
         return { ...d, layers: d.layers.filter((l) => !gone.has(l.id)) };
       }, key),
     /** Any whole-design change, such as a theme or arranging the photos. */
-    apply: (fn: (d: Design) => Design) => change((d) => fn(d)),
+    apply: (fn: (d: Design) => Design, key?: string) => change((d) => fn(d), key),
+    /** Changes several layers as one step, such as moving everything that is selected. Locked layers are left. */
+    patchMany: (patches: Record<string, Partial<Layer>>, key?: string) =>
+      change((d) => {
+        if (!d.layers.some((l) => patches[l.id] && !l.locked)) return null;
+        return { ...d, layers: d.layers.map((l) => (patches[l.id] && !l.locked ? { ...l, ...patches[l.id] } : l)) };
+      }, key),
+    /** Adds several layers as one step, such as pasting. Refused if it would pass the layer limit. */
+    addLayers: (add: Layer[]) =>
+      change((d) => {
+        if (add.length === 0 || d.layers.length + add.length > MAX_LAYERS) return null;
+        return { ...d, layers: [...d.layers, ...add] };
+      }),
     toggleLock: (id: string) =>
       change((d) => ({ ...d, layers: d.layers.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)) })),
     reorder: (id: string, to: "front" | "back" | "forward" | "backward") =>
