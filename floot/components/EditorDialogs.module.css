@@ -1,0 +1,152 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  margin: var(--spacing-4) 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  font-size: 0.875rem;
+}
+
+.videoBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.videoBox p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.videoBox small {
+  color: var(--muted-foreground);
+}
+
+.previewDialog {
+  max-width: 26rem;
+}
+
+.phone {
+  margin: var(--spacing-3) auto 0;
+  width: min(20rem, 100%);
+  border: 10px solid #1d211e;
+  border-radius: 2rem;
+  background: #ffffff;
+  color: #1d211e;
+  overflow: hidden;
+  outline: none;
+}
+
+.phone:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.feedTop {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #f6d94a, #f66dbb);
+}
+
+.slideWrap {
+  position: relative;
+  width: 100%;
+  background: #eeeeee;
+}
+
+.slideImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.slideLoading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 0.75rem;
+  color: #5e655f;
+}
+
+.counter {
+  position: absolute;
+  top: var(--spacing-2);
+  right: var(--spacing-2);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--spacing-2) 0 var(--spacing-3);
+}
+
+.dot,
+.dotOn {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: #c8c8c8;
+}
+
+.dotOn {
+  background: #0090ff;
+}
+
+.shortcuts {
+  margin: var(--spacing-4) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  font-size: 0.875rem;
+}
+
+.shortcuts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--spacing-2);
+}
+
+.shortcuts dd {
+  margin: 0;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+
+.shortcuts kbd {
+  font-family: var(--font-family-monospace);
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+}

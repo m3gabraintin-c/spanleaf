@@ -29,6 +29,9 @@ export default function HomePage() {
       </Helmet>
 
       <header className={styles.header}>
+        <a href="#main" className={styles.skip}>
+          Skip to content
+        </a>
         <span className={styles.wordmark}>Spanleaf</span>
         <div className={styles.headerActions}>
           <ThemeModeSwitch />
@@ -38,7 +41,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main>
+      <main id="main">
         <section className={styles.hero}>
           <p className={styles.kicker}>Free carousel maker</p>
           <h1 className={styles.h1}>Seamless carousels, made at your desk.</h1>
@@ -88,7 +91,11 @@ export default function HomePage() {
         </section>
       </main>
 
-      <footer className={styles.footer}>Spanleaf. Free, and your projects stay in your browser.</footer>
+      <footer className={styles.footer}>
+        <span>Spanleaf. Free, and your projects stay in your browser.</span>
+        <Link to="/terms">Terms</Link>
+        <Link to="/privacy">Privacy</Link>
+      </footer>
     </div>
   );
 }

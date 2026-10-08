@@ -156,3 +156,17 @@
   gap: var(--spacing-2);
   font-size: 0.875rem;
 }
+
+.footer {
+  display: flex;
+  gap: var(--spacing-4);
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--spacing-6);
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+
+.footer a {
+  color: var(--muted-foreground);
+}

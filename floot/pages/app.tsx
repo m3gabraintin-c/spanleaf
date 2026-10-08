@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/Dialog";
 import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import { TEMPLATES } from "../helpers/templates";
+import { track } from "../helpers/analytics";
 import { FORMATS, FORMAT_KEYS, FormatKey, MAX_SLIDES, Project, clampSlides } from "../helpers/carouselModel";
 import {
   createProject,
@@ -133,12 +134,17 @@ export default function ProjectsPage() {
           </ul>
         )}
       </main>
+      <footer className={styles.footer}>
+        <Link to="/terms">Terms</Link>
+        <Link to="/privacy">Privacy</Link>
+      </footer>
 
       <NewDialog
         open={making}
         onOpenChange={setMaking}
         onCreate={async (title, format, slides, template) => {
           const p = await createProject(title, format, slides, template);
+          track("project_created", { template: template ?? "blank", slides: p.design.slideCount });
           navigate(`/app/project/${p.id}`);
         }}
       />

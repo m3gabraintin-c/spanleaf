@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, MutableRefObject } from "react";
 import Konva from "konva";
 import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, Line, Shape, Transformer } from "react-konva";
-import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, slideOf } from "../helpers/carouselModel";
+import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf } from "../helpers/carouselModel";
+import { clipUrl } from "../helpers/videoClips";
 import { measureText } from "../helpers/measureText";
 import { cropRect, isAdjusted } from "../helpers/photoStyle";
 import { Guide, snapBox } from "../helpers/snapping";
@@ -47,13 +48,15 @@ type Props = {
   pen: Pen;
   onStroke: (layer: Layer) => void;
   onErase: (ids: string[]) => void;
+  /** Whether video layers play in the editor. They are still at their first frame otherwise. */
+  playVideos: boolean;
 };
 
 /**
  * The wide canvas. Only the part in view is a real canvas, so a project with hundreds of slides stays
  * light: the page scrolls, and the stage moves the other way to match.
  */
-export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase }: Props) => {
+export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase, playVideos }: Props) => {
   // Dark or light changes the colours of the editing aids. Exports never include them.
   const { mode } = useThemeMode();
   const dark = mode === "dark" || (mode === "auto" && typeof document !== "undefined" && document.body.classList.contains("dark"));
@@ -245,7 +248,9 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
                   />
                 )}
                 {design.layers.map((l) =>
-                  l.type === "text" ? (
+                  l.type === "video" ? (
+                    <VideoNode key={l.id} layer={l} {...common} playing={playVideos} />
+                  ) : l.type === "text" ? (
                     <WordsNode key={l.id} layer={l} {...common} />
                   ) : l.type === "drawing" ? (
                     <DrawingNode key={l.id} layer={l} {...common} />
@@ -253,6 +258,29 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
                     <PictureNode key={l.id} layer={l} {...common} />
                   ),
                 )}
+                {design.pageNumbers &&
+                  Array.from({ length: design.slideCount }, (_, i) => {
+                    const pn = design.pageNumbers!;
+                    const size = pn.style === "dots" ? 30 : 40;
+                    const w = 600;
+                    const x = pn.position === "bottom-centre" ? i * SLIDE_WIDTH + (SLIDE_WIDTH - w) / 2 : i * SLIDE_WIDTH + SLIDE_WIDTH - w - 48;
+                    const y = pn.position === "top-right" ? 40 : height - 40 - size;
+                    return (
+                      <KText
+                        key={`pn${i}`}
+                        text={pageLabel(pn.style, i, design.slideCount)}
+                        x={x}
+                        y={y}
+                        width={w}
+                        align={pn.position === "bottom-centre" ? "center" : "right"}
+                        fontFamily="Inter Tight"
+                        fontStyle="600"
+                        fontSize={size}
+                        fill={pn.color}
+                        listening={false}
+                      />
+                    );
+                  })}
               </KLayer>
               {/* Editing aids: never exported. */}
               <KLayer listening={!drawing}>
@@ -301,6 +329,114 @@ type NodeProps = {
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** A video layer: the clip in its box, still or playing, muted. Its node is named "video" so export can find the clip. */
+const VideoNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled, playing }: NodeProps & { playing: boolean }) => {
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const [missing, setMissing] = useState(false);
+  const ref = useRef<Konva.Image | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    let el: HTMLVideoElement | null = null;
+    if (!layer.mediaKey) return setMissing(true);
+    void clipUrl(layer.mediaKey).then((url) => {
+      if (!alive) return;
+      if (!url) return setMissing(true);
+      el = document.createElement("video");
+      el.muted = true;
+      el.loop = true;
+      el.playsInline = true;
+      el.preload = "auto";
+      el.onloadeddata = () => {
+        if (!alive) return;
+        setVideo(el);
+        ref.current?.getLayer()?.batchDraw();
+      };
+      el.onerror = () => alive && setMissing(true);
+      el.src = url;
+    });
+    return () => {
+      alive = false;
+      el?.pause();
+    };
+  }, [layer.mediaKey]);
+
+  useEffect(() => {
+    if (!video) return;
+    if (!playing) {
+      video.pause();
+      ref.current?.getLayer()?.batchDraw();
+      return;
+    }
+    void video.play().catch(() => undefined);
+    const anim = new Konva.Animation(() => undefined, ref.current?.getLayer());
+    anim.start();
+    return () => {
+      anim.stop();
+      video.pause();
+    };
+  }, [video, playing]);
+
+  const common = {
+    x: layer.x,
+    y: layer.y,
+    width: layer.w,
+    height: layer.h,
+    rotation: layer.rotation,
+    opacity: layer.opacity ?? 1,
+    draggable: !layer.locked && !disabled,
+    onMouseDown: () => !disabled && onSelect(layer.id),
+    onTouchStart: () => !disabled && onSelect(layer.id),
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey),
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      onDragEnd();
+      onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+    },
+    onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
+      const n = e.target;
+      const sx = n.scaleX();
+      const sy = n.scaleY();
+      n.scaleX(1);
+      n.scaleY(1);
+      onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.max(24, Math.round(n.width() * sx)), h: Math.max(24, Math.round(n.height() * sy)), rotation: r2(n.rotation()) });
+    },
+  };
+
+  if (missing) {
+    return (
+      <KText
+        {...common}
+        ref={(n) => {
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        text="This video isn't in this browser. Add it again."
+        fontFamily="Inter Tight"
+        fontSize={34}
+        align="center"
+        verticalAlign="middle"
+        fill="#b3392f"
+      />
+    );
+  }
+
+  return (
+    <KImage
+      {...common}
+      name="video"
+      ref={(n) => {
+        ref.current = n;
+        if (n) nodes.set(layer.id, n);
+        else nodes.delete(layer.id);
+      }}
+      image={video ?? undefined}
+      cornerRadius={layer.radius ?? 0}
+      stroke={layer.border?.color}
+      strokeWidth={layer.border?.width ?? 0}
+    />
+  );
+};
 
 const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
   const src = layer.src;

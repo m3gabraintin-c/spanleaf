@@ -14,11 +14,16 @@ import {
   ArrowRight,
   Copy,
   Download,
+  Film,
+  Keyboard,
   Lock,
+  Pause,
+  Play,
   Plus,
   Redo2,
   RotateCcw,
   RotateCw,
+  Smartphone,
   Trash2,
   Type,
   Undo2,
@@ -37,6 +42,7 @@ import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import { CarouselCanvas } from "../components/CarouselCanvas";
 import type { Pen } from "../components/CarouselCanvas";
 import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel } from "../components/EditorPanels";
+import { ExportDialog, PhonePreview, ShortcutsDialog } from "../components/EditorDialogs";
 import { STICKERS, stickerSrc } from "../helpers/stickerArt";
 import { applyTheme, arrangePhotos } from "../helpers/themes";
 import {
@@ -49,7 +55,9 @@ import {
   Layer,
   MAX_LAYERS,
   MAX_SLIDES,
+  PageNumbers,
   Project,
+  readableOn,
   SLIDE_WIDTH,
   slideOf,
   rotatedBy,
@@ -59,8 +67,10 @@ import { getProject, saveProject } from "../helpers/projectStorage";
 import { useEditorState } from "../helpers/useEditorState";
 import { preparePicture } from "../helpers/preparePicture";
 import { measureText } from "../helpers/measureText";
-import { exportSlides } from "../helpers/exportSlides";
+import { ExportOptions, exportSlideVideo, exportSlides, recordingType, renderSlide } from "../helpers/exportSlides";
 import { flipPicture } from "../helpers/flipPicture";
+import { addClip } from "../helpers/videoClips";
+import { track } from "../helpers/analytics";
 import styles from "./app.project.$projectId.module.css";
 
 const ALIGN_ICONS: Record<Alignment, { label: string; Icon: typeof AlignStartVertical }> = {
@@ -120,11 +130,16 @@ function Editor({ project }: { project: Project }) {
   const [tab, setTab] = useState("photos");
   const [current, setCurrent] = useState(0);
   const [goTo, setGoTo] = useState<{ index: number; nonce: number } | null>(null);
-  const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [playVideos, setPlayVideos] = useState(false);
   const [pen, setPen] = useState<Pen>({ mode: "pen", color: "#111111", size: 12 });
   const stageRef = useRef<Konva.Stage | null>(null);
   const contentRef = useRef<Konva.Layer | null>(null);
   const files = useRef<HTMLInputElement>(null);
+  const clips = useRef<HTMLInputElement>(null);
   /** The empty frame the next chosen photo goes into, when one was picked. */
   const fillFor = useRef<string | null>(null);
   const latest = useRef({ design: ed.design, title });
@@ -136,6 +151,8 @@ function Editor({ project }: { project: Project }) {
   const height = FORMATS[design.format].height;
   const selected = design.layers.find((l) => l.id === selectedId) ?? null;
   const go = useCallback((index: number) => setGoTo({ index, nonce: Math.random() }), []);
+
+  useEffect(() => track("project_opened", { slides: project.design.slideCount }), [project.design.slideCount]);
 
   // ---- saving: one second after the last change, and when the tab goes away
   const persist = useCallback(async () => {
@@ -168,7 +185,9 @@ function Editor({ project }: { project: Project }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable || t.getAttribute("role") === "slider")) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable || t.getAttribute("role") === "slider")) return;
+      // Dialogs handle their own keys.
+      if (document.querySelector('[role="dialog"]')) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -177,6 +196,22 @@ function Editor({ project }: { project: Project }) {
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         ed.redo();
+      } else if (mod && e.key.toLowerCase() === "d" && selected) {
+        e.preventDefault();
+        ed.duplicateLayer(selected.id);
+      } else if (mod) {
+        return;
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      } else if (e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setPreviewOpen(true);
+      } else if (e.key === "Escape" && selected) {
+        ed.select(null);
+      } else if (selected && (e.key === "]" || e.key === "[")) {
+        e.preventDefault();
+        ed.reorder(selected.id, e.key === "]" ? "forward" : "backward");
       } else if (selected && (e.key === "Delete" || e.key === "Backspace")) {
         e.preventDefault();
         ed.removeLayer(selected.id);
@@ -298,20 +333,89 @@ function Editor({ project }: { project: Project }) {
     ed.select(null);
   };
 
-  const runExport = async () => {
+  const addVideos = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    for (const file of Array.from(list).slice(0, 5)) {
+      try {
+        setBusy(`Adding ${file.name}`);
+        const clip = await addClip(file);
+        const k = Math.min((SLIDE_WIDTH * 0.8) / clip.width, (height * 0.8) / clip.height);
+        const w = Math.round(clip.width * k);
+        const h = Math.round(clip.height * k);
+        ed.addLayer({
+          id: uid(),
+          type: "video",
+          name: clip.name,
+          mediaKey: clip.key,
+          duration: clip.duration,
+          natural: { w: clip.width, h: clip.height },
+          x: current * SLIDE_WIDTH + Math.round((SLIDE_WIDTH - w) / 2),
+          y: Math.round((height - h) / 2),
+          w,
+          h,
+          rotation: 0,
+          locked: false,
+        });
+        track("video_added", { seconds: Math.round(clip.duration) });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "That video couldn't be added.");
+      }
+    }
+    setBusy(null);
+    if (clips.current) clips.current.value = "";
+  };
+
+  const runExport = async (options: ExportOptions) => {
     const stage = stageRef.current;
     const content = contentRef.current;
     if (!stage || !content) return;
-    setExporting({ done: 0, total: design.slideCount });
+    const total = options.slides?.length ?? design.slideCount;
+    setBusy(`Exporting 0 of ${total}`);
     try {
-      await exportSlides(stage, content, design, title, (done, total) => setExporting({ done, total }));
-      toast.success(design.slideCount === 1 ? "Slide downloaded." : `Downloaded ${design.slideCount} slides as a zip.`);
+      await exportSlides(stage, content, design, title, options, (done, all) => setBusy(`Exporting ${done} of ${all}`));
+      toast.success(total === 1 ? "Slide downloaded." : `Downloaded ${total} slides as a zip.`);
+      track("export", { slides: total, format: options.format, width: options.width });
+      setExportOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "The export didn't finish.");
     } finally {
-      setExporting(null);
+      setBusy(null);
     }
   };
+
+  const videosOnSlide = (i: number) =>
+    (contentRef.current?.find(".video") ?? [])
+      .filter((n) => slideOf({ x: n.x(), w: n.width() }) === i)
+      .map((n) => (n as Konva.Image).image())
+      .filter((v): v is HTMLVideoElement => v instanceof HTMLVideoElement);
+
+  const runVideoExport = async () => {
+    const stage = stageRef.current;
+    const content = contentRef.current;
+    if (!stage || !content) return;
+    setPlayVideos(false);
+    setBusy("Recording 0%");
+    try {
+      await exportSlideVideo(stage, content, design, current, title, videosOnSlide(current), (f) => setBusy(`Recording ${Math.round(f * 100)}%`));
+      toast.success(`Slide ${current + 1} downloaded as a video.`);
+      track("export_video", {});
+      setExportOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The video export didn't finish.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const renderForPreview = useCallback((i: number) => {
+    const stage = stageRef.current;
+    const content = contentRef.current;
+    if (!stage || !content) return Promise.reject(new Error("The canvas isn't ready."));
+    return renderSlide(stage, content, latest.current.design, i, 0.5);
+  }, []);
+
+  const setPageNumbers = (pn: PageNumbers | null) => ed.apply((d) => ({ ...d, pageNumbers: pn }));
+  const hasVideo = design.layers.some((l) => l.type === "video");
 
   const changeFormat = (format: FormatKey) => {
     if (format === design.format) return;
@@ -335,6 +439,9 @@ function Editor({ project }: { project: Project }) {
         <Input aria-label="Project name" className={styles.titleInput} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
         <div className={styles.headerRight}>
           <ThemeModeSwitch />
+          <Button variant="ghost" size="icon-sm" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => setShortcutsOpen(true)}>
+            <Keyboard size={16} />
+          </Button>
           <Button variant="ghost" size="icon-sm" aria-label="Undo" title="Undo" disabled={!ed.canUndo} onClick={ed.undo}>
             <Undo2 size={16} />
           </Button>
@@ -344,11 +451,28 @@ function Editor({ project }: { project: Project }) {
           <span className={styles.status} role="status" data-state={save}>
             {status}
           </span>
-          <Button size="sm" onClick={runExport} disabled={!!exporting}>
-            <Download size={16} /> {exporting ? `Exporting ${exporting.done} of ${exporting.total}` : "Export"}
+          <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)} title="Preview on a phone (P)">
+            <Smartphone size={16} /> Preview
+          </Button>
+          <Button size="sm" onClick={() => setExportOpen(true)} disabled={!!busy}>
+            <Download size={16} /> {busy ?? "Export"}
           </Button>
         </div>
       </header>
+
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        slideCount={design.slideCount}
+        current={current}
+        currentHasVideo={design.layers.some((l) => l.type === "video" && slideOf(l) === current)}
+        canRecord={!!recordingType()}
+        busy={busy}
+        onExport={(o) => void runExport(o)}
+        onExportVideo={() => void runVideoExport()}
+      />
+      <PhonePreview open={previewOpen} onOpenChange={setPreviewOpen} slideCount={design.slideCount} aspect={SLIDE_WIDTH / height} start={current} render={renderForPreview} />
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
       <div className={styles.body}>
         <CarouselCanvas
@@ -365,6 +489,7 @@ function Editor({ project }: { project: Project }) {
           pen={pen}
           onStroke={addStroke}
           onErase={(ids) => ed.removeLayers(ids, "erase")}
+          playVideos={playVideos}
         />
 
         <aside className={styles.panel} aria-label="Tools">
@@ -391,6 +516,16 @@ function Editor({ project }: { project: Project }) {
               >
                 <ImagePlus size={16} /> Add photos
               </Button>
+              <input ref={clips} type="file" accept="video/mp4,video/webm,video/quicktime" multiple hidden aria-label="Choose videos" onChange={(e) => void addVideos(e.target.files)} />
+              <Button variant="outline" onClick={() => clips.current?.click()} disabled={!!busy}>
+                <Film size={16} /> Add video
+              </Button>
+              {hasVideo && (
+                <Button variant="outline" size="sm" onClick={() => setPlayVideos((p) => !p)}>
+                  {playVideos ? <Pause size={14} /> : <Play size={14} />} {playVideos ? "Pause videos" : "Play videos"}
+                </Button>
+              )}
+              <p className={styles.hint}>Videos: MP4, WebM or MOV, up to 90 seconds and 200 MB. They play muted. To keep the movement, export a slide with a video as a video from the Export button.</p>
               {selected?.type === "image" && !selected.src ? (
                 <>
                   <p className={styles.hint}>This is an empty frame. Choose a photo to put in it. It is left out of the exported pictures until it has a photo.</p>
@@ -627,6 +762,49 @@ function Editor({ project }: { project: Project }) {
                   </SelectContent>
                 </Select>
               </div>
+              <div className={styles.fieldRow}>
+                <span id="pn-label">Page numbers</span>
+                <Switch
+                  aria-labelledby="pn-label"
+                  checked={!!design.pageNumbers}
+                  onCheckedChange={(on) => setPageNumbers(on ? { style: "fraction", position: "bottom-right", color: readableOn(design.gradient?.to ?? design.background) } : null)}
+                />
+              </div>
+              {design.pageNumbers && (
+                <div className={styles.fields}>
+                  <div className={styles.field}>
+                    <span id="pns-label">Style</span>
+                    <Select value={design.pageNumbers.style} onValueChange={(v) => setPageNumbers({ ...design.pageNumbers!, style: v as PageNumbers["style"] })}>
+                      <SelectTrigger aria-labelledby="pns-label">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fraction">1/{design.slideCount}</SelectItem>
+                        <SelectItem value="number">1</SelectItem>
+                        <SelectItem value="dots">Dots</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className={styles.field}>
+                    <span id="pnp-label">Position</span>
+                    <Select value={design.pageNumbers.position} onValueChange={(v) => setPageNumbers({ ...design.pageNumbers!, position: v as PageNumbers["position"] })}>
+                      <SelectTrigger aria-labelledby="pnp-label">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bottom-right">Bottom right</SelectItem>
+                        <SelectItem value="bottom-centre">Bottom centre</SelectItem>
+                        <SelectItem value="top-right">Top right</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <label className={styles.fieldRow}>
+                    <span>Colour</span>
+                    <Input type="color" className={styles.colour} value={design.pageNumbers.color} onChange={(e) => setPageNumbers({ ...design.pageNumbers!, color: e.target.value })} />
+                  </label>
+                  <p className={styles.hint}>Page numbers are part of the exported pictures.</p>
+                </div>
+              )}
               <ol className={styles.slideList} aria-label="Slides">
                 {Array.from({ length: Math.min(design.slideCount, 200) }, (_, i) => (
                   <li key={i}>
@@ -708,7 +886,7 @@ function Editor({ project }: { project: Project }) {
                           go(Math.max(0, Math.min(design.slideCount - 1, slideOf(l))));
                         }}
                       >
-                        {{ image: "Photo", text: "Text", sticker: "Sticker", drawing: "Drawing" }[l.type]}: {l.name}
+                        {{ image: l.src ? "Photo" : "Empty frame", text: "Text", sticker: "Sticker", drawing: "Drawing", video: "Video" }[l.type]}: {l.name}
                         {l.locked ? " (locked)" : ""}
                       </button>
                     </li>
