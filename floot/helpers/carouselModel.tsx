@@ -25,7 +25,7 @@ export type StrokeData = { color: string; width: number; points: number[] };
 
 export type Layer = {
   id: string;
-  type: "image" | "text" | "sticker" | "drawing";
+  type: "image" | "text" | "sticker" | "drawing" | "video";
   name: string;
   x: number;
   y: number;
@@ -35,6 +35,10 @@ export type Layer = {
   locked: boolean;
   /** Image and sticker layers: the picture, as a data address. */
   src?: string;
+  /** Video layers: the clip is kept apart from the project (it can be large), under this key. */
+  mediaKey?: string;
+  /** Video layers: the clip's length in seconds. */
+  duration?: number;
   /** Image layers: the picture's own size, so a crop can be worked out. */
   natural?: { w: number; h: number };
   crop?: Crop;
@@ -67,7 +71,29 @@ export type Design = {
   background: string;
   gradient: Gradient | null;
   layers: Layer[];
+  /** Numbers on the slides, drawn into the exported pictures. */
+  pageNumbers?: PageNumbers | null;
 };
+
+export type PageNumbers = {
+  style: "fraction" | "number" | "dots";
+  position: "bottom-centre" | "bottom-right" | "top-right";
+  color: string;
+};
+
+/** Black or white, whichever reads better on a #rrggbb background. */
+export const readableOn = (hex: string) => {
+  const n = parseInt(hex.replace("#", "").padEnd(6, "0").slice(0, 6), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#1d211e" : "#ffffff";
+};
+
+/** What a slide's number reads, counting from 1. */
+export const pageLabel = (style: PageNumbers["style"], index: number, total: number) =>
+  style === "fraction" ? `${index + 1}/${total}` : style === "number" ? String(index + 1) : Array.from({ length: Math.min(total, 12) }, (_, i) => (i === Math.min(index, 11) ? "●" : "○")).join(" ");
 
 export type Project = {
   id: string;

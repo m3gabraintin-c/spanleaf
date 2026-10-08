@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef } from "react";
+import { Helmet } from "react-helmet";
 import { ThemeMode, useThemeMode } from "../helpers/themeMode";
 
 const KEY = "spanleaf:theme";
@@ -45,5 +46,11 @@ export const AppFrame = ({ children }: { children: ReactNode }) => {
     }
   }, [mode]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {/* Screen readers need the page's language to read it correctly. */}
+      <Helmet htmlAttributes={{ lang: "en" }} />
+      {children}
+    </>
+  );
 };
