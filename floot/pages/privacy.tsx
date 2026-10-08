@@ -16,6 +16,12 @@ export default function PrivacyPage() {
       </p>
       <p>Your choice of light or dark mode is kept in your browser too, so it is remembered next time.</p>
 
+      <h2>Making your own stickers</h2>
+      <p>
+        When you make a sticker, the background is taken away on your device, by a small model that runs in your browser. The picture is not sent anywhere. The first time, your browser downloads the model from this site and the
+        program that runs it from jsDelivr, a public code host, which sees your IP address like any website you load something from. Stickers you make are kept in your browser under My stickers.
+      </p>
+
       <h2>The AI collage shuffle</h2>
       <p>
         When you press Shuffle collage with "AI picks the tilts and stickers" switched on, small copies of your photos (at most 192 pixels across, so faces and details are blurry) are sent through Floot to OpenAI, which looks at them

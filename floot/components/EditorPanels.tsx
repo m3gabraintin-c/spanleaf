@@ -7,6 +7,10 @@ import { ADJUST_PRESETS, MAX_ZOOM, NO_ADJUST, isAdjusted } from "../helpers/phot
 import { PEN_COLOURS, PenMode } from "../helpers/strokes";
 import { STICKERS, STICKER_COLOURS, stickerSrc } from "../helpers/stickerArt";
 import { THEMES } from "../helpers/themes";
+import { MySticker } from "../helpers/myStickers";
+import { patternTile } from "../helpers/patterns";
+import { useMemo, useRef } from "react";
+import { Scissors, X } from "lucide-react";
 import styles from "./EditorPanels.module.css";
 
 type Patch = (patch: Partial<Layer>, key?: string) => void;
@@ -138,14 +142,70 @@ export const StickerPanel = ({
   selected,
   onAdd,
   onRecolour,
+  mine,
+  onMake,
+  onAddMine,
+  onDeleteMine,
 }: {
   selected: Layer | null;
   onAdd: (id: string, colour: string) => void;
   onRecolour: (colour: string) => void;
+  mine: MySticker[];
+  /** A picture chosen to make a sticker from, as an address. */
+  onMake: (src: string) => void;
+  onAddMine: (s: MySticker) => void;
+  onDeleteMine: (id: string) => void;
 }) => {
-  const colour = selected?.type === "sticker" ? (selected.color ?? "#f6d94a") : "#f6d94a";
+  const custom = selected?.type === "sticker" && selected.sticker === "custom";
+  const colour = selected?.type === "sticker" && !custom ? (selected.color ?? "#f6d94a") : "#f6d94a";
+  const file = useRef<HTMLInputElement>(null);
   return (
     <div className={styles.stack}>
+      <h3 className={styles.head}>Make your own</h3>
+      <p className={styles.hint}>Pick a picture and the background is taken away, leaving the main subject as a sticker. It runs on this device.</p>
+      <input
+        ref={file}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        aria-label="Choose a picture for a sticker"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === "string" && onMake(reader.result);
+          reader.readAsDataURL(f);
+        }}
+      />
+      <div className={styles.chips}>
+        <Button size="sm" onClick={() => file.current?.click()}>
+          <Scissors size={14} /> From a picture
+        </Button>
+        {selected?.type === "image" && selected.src && (
+          <Button size="sm" variant="outline" onClick={() => onMake(selected.src!)}>
+            <Scissors size={14} /> From the selected photo
+          </Button>
+        )}
+      </div>
+      {mine.length > 0 && (
+        <>
+          <h3 className={styles.head}>My stickers ({mine.length})</h3>
+          <div className={styles.stickerGrid}>
+            {mine.map((s) => (
+              <div key={s.id} className={styles.mineCell}>
+                <button type="button" className={styles.stickerButton} aria-label="Add my sticker" onClick={() => onAddMine(s)}>
+                  <img src={s.src} alt="" className={styles.mineImg} />
+                </button>
+                <button type="button" className={styles.mineDelete} aria-label="Delete this sticker" onClick={() => onDeleteMine(s.id)}>
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <h3 className={styles.head}>Shapes</h3>
       <p className={styles.hint}>Click a sticker to add it to the slide in view. Select one on the canvas to change its colour.</p>
       <div className={styles.stickerGrid}>
         {STICKERS.map((s) => (
@@ -156,7 +216,7 @@ export const StickerPanel = ({
       </div>
       <div className={styles.swatches} role="group" aria-label="Sticker colour">
         {STICKER_COLOURS.map((c) => (
-          <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={colour === c} className={styles.swatch} style={{ background: c }} onClick={() => selected?.type === "sticker" && onRecolour(c)} />
+          <button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={colour === c} disabled={custom} className={styles.swatch} style={{ background: c }} onClick={() => selected?.type === "sticker" && !custom && onRecolour(c)} />
         ))}
       </div>
     </div>
@@ -166,17 +226,14 @@ export const StickerPanel = ({
 /** Whole-carousel looks, and arranging the photos. */
 export const ThemePanel = ({ photoCount, onTheme, onArrange }: { photoCount: number; onTheme: (id: string) => void; onArrange: () => void }) => (
   <div className={styles.stack}>
-    <p className={styles.hint}>A theme sets the background and gives every photo its frame, corners and shadow. Undo takes it back.</p>
+    <p className={styles.hint}>
+      A theme sets the background, pattern and colours, gives every photo its frame, corners, shadow, tilt and tone, styles your text, and scatters a few matching decorations. Your own stickers are kept, and undo takes it
+      back.
+    </p>
     <ul className={styles.themeList}>
       {THEMES.map((t) => (
         <li key={t.id}>
-          <button type="button" className={styles.themeButton} onClick={() => onTheme(t.id)}>
-            <span className={styles.themeSwatch} style={{ background: t.gradient ? `linear-gradient(${t.gradient.angle}deg, ${t.gradient.from}, ${t.gradient.to})` : t.background, borderColor: t.border?.color ?? "var(--border)" }} />
-            <span>
-              <strong>{t.name}</strong>
-              <small>{t.blurb}</small>
-            </span>
-          </button>
+          <ThemeCard theme={t} onPick={() => onTheme(t.id)} />
         </li>
       ))}
     </ul>
@@ -186,3 +243,29 @@ export const ThemePanel = ({ photoCount, onTheme, onArrange }: { photoCount: num
     <p className={styles.hint}>Arranging places photos in the order you added them: one large, two stacked, then one that runs across a slide edge. It adds slides if it needs them.</p>
   </div>
 );
+
+/** A small picture of a theme: its background and pattern, two framed photo shapes, and its decorations. */
+const ThemeCard = ({ theme: t, onPick }: { theme: (typeof THEMES)[number]; onPick: () => void }) => {
+  const pattern = useMemo(() => (t.pattern ? `url(${patternTile({ ...t.pattern, opacity: Math.min(1, t.pattern.opacity * 1.4) }).toDataURL()})` : "none"), [t.pattern]);
+  const ground = t.gradient ? `linear-gradient(${t.gradient.angle}deg, ${t.gradient.from}, ${t.gradient.to})` : t.background;
+  const frame = {
+    border: t.border ? `${Math.max(2, Math.round(t.border.width / 5))}px solid ${t.border.color}` : "none",
+    borderRadius: Math.round(t.radius / 6),
+    boxShadow: t.shadow ? "0 2px 5px rgba(0,0,0,0.25)" : "none",
+  };
+  return (
+    <button type="button" className={styles.themeButton} onClick={onPick}>
+      <span className={styles.themePreview} style={{ background: `${pattern}, ${ground}`, backgroundSize: "18px 18px, auto" }} aria-hidden>
+        <span className={styles.themePhotoA} style={{ ...frame, transform: `rotate(${-t.tilt}deg)` }} />
+        <span className={styles.themePhotoB} style={{ ...frame, transform: `rotate(${t.tilt}deg)` }} />
+        {t.decor.slice(0, 2).map((d, i) => (
+          <img key={d.sticker} src={stickerSrc(d.sticker, d.colour)} alt="" className={i === 0 ? styles.themeDecorA : styles.themeDecorB} />
+        ))}
+      </span>
+      <span className={styles.themeText}>
+        <strong style={{ fontFamily: t.fontFamily }}>{t.name}</strong>
+        <small>{t.blurb}</small>
+      </span>
+    </button>
+  );
+};

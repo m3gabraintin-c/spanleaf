@@ -132,10 +132,85 @@
   color: var(--muted-foreground);
 }
 
-.themeSwatch {
-  width: 2.25rem;
-  height: 2.25rem;
+.themePreview {
+  position: relative;
+  width: 4.5rem;
+  height: 4.5rem;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
-  border: 3px solid var(--border);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.themePhotoA,
+.themePhotoB {
+  position: absolute;
+  width: 46%;
+  height: 38%;
+  background: linear-gradient(135deg, #9fb7c9, #e3b98f);
+}
+
+.themePhotoA {
+  left: 10%;
+  top: 12%;
+}
+
+.themePhotoB {
+  right: 9%;
+  bottom: 12%;
+  background: linear-gradient(135deg, #c99a9f, #8fb39a);
+}
+
+.themeDecorA,
+.themeDecorB {
+  position: absolute;
+  width: 34%;
+  height: 34%;
+  object-fit: contain;
+}
+
+.themeDecorA {
+  right: 2%;
+  top: 2%;
+}
+
+.themeDecorB {
+  left: 3%;
+  bottom: 3%;
+}
+
+.themeText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mineCell {
+  position: relative;
+}
+
+.mineCell .stickerButton {
+  width: 100%;
+}
+
+.mineImg {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+}
+
+.mineDelete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
 }

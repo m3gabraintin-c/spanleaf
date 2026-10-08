@@ -44,6 +44,7 @@ import { CarouselCanvas } from "../components/CarouselCanvas";
 import type { Pen } from "../components/CarouselCanvas";
 import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel } from "../components/EditorPanels";
 import { ExportDialog, PhonePreview, ShortcutsDialog } from "../components/EditorDialogs";
+import { CutoutDialog } from "../components/CutoutDialog";
 import { STICKERS, stickerSrc } from "../helpers/stickerArt";
 import { applyTheme, arrangePhotos } from "../helpers/themes";
 import {
@@ -57,6 +58,8 @@ import {
   MAX_LAYERS,
   MAX_SLIDES,
   PageNumbers,
+  PATTERN_KINDS,
+  Pattern,
   Project,
   readableOn,
   SLIDE_WIDTH,
@@ -74,6 +77,7 @@ import { addClip } from "../helpers/videoClips";
 import { track } from "../helpers/analytics";
 import { CollagePlan, applyPlan, cleanPlan, photosOf, randomPlan, shuffleLayout } from "../helpers/collage";
 import { makeThumb } from "../helpers/makeThumb";
+import { MySticker, deleteMySticker, listMyStickers } from "../helpers/myStickers";
 import { CollagePlanError, postCollagePlan } from "../endpoints/collage-plan_POST.schema";
 import styles from "./app.project.$projectId.module.css";
 
@@ -140,6 +144,8 @@ function Editor({ project }: { project: Project }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [playVideos, setPlayVideos] = useState(false);
   const [aiCollage, setAiCollage] = useState(true);
+  const [myStickers, setMyStickers] = useState<MySticker[]>([]);
+  const [cutoutSource, setCutoutSource] = useState<string | null>(null);
   const [pen, setPen] = useState<Pen>({ mode: "pen", color: "#111111", size: 12 });
   const stageRef = useRef<Konva.Stage | null>(null);
   const contentRef = useRef<Konva.Layer | null>(null);
@@ -158,6 +164,7 @@ function Editor({ project }: { project: Project }) {
   const go = useCallback((index: number) => setGoTo({ index, nonce: Math.random() }), []);
 
   useEffect(() => track("project_opened", { slides: project.design.slideCount }), [project.design.slideCount]);
+  useEffect(() => void listMyStickers().then(setMyStickers, () => setMyStickers([])), []);
 
   // ---- saving: one second after the last change, and when the tab goes away
   const persist = useCallback(async () => {
@@ -176,9 +183,23 @@ function Editor({ project }: { project: Project }) {
       return;
     }
     setSave("unsaved");
-    const t = setTimeout(() => void persist(), 900);
+    const t = setTimeout(() => void persist(), 400);
     return () => clearTimeout(t);
   }, [ed.version, title, persist]);
+
+  // A save still waiting when the page is closed or reloaded would be lost, so the browser asks first.
+  const saveState = useRef(save);
+  saveState.current = save;
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (saveState.current === "saved") return;
+      void persist();
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [persist]);
 
   useEffect(() => {
     const flush = () => void persist();
@@ -331,6 +352,27 @@ function Editor({ project }: { project: Project }) {
       toast.error(e instanceof Error ? e.message : "The picture couldn't be flipped.");
     }
   };
+
+  const addMySticker = (s: MySticker) => {
+    const k = 360 / Math.max(s.w, s.h);
+    const w = Math.round(s.w * k);
+    const h = Math.round(s.h * k);
+    ed.addLayer({
+      id: uid(),
+      type: "sticker",
+      name: "My sticker",
+      sticker: "custom",
+      src: s.src,
+      x: current * SLIDE_WIDTH + Math.round((SLIDE_WIDTH - w) / 2),
+      y: Math.round((height - h) / 2),
+      w,
+      h,
+      rotation: 0,
+      locked: false,
+    });
+  };
+
+  const setPattern = (pattern: Pattern | null) => ed.apply((d) => ({ ...d, pattern }));
 
   const addStroke = (layer: Layer) => {
     if (design.layers.length >= MAX_LAYERS) return void toast.error(`This project has reached its limit of ${MAX_LAYERS} layers.`);
@@ -604,7 +646,22 @@ function Editor({ project }: { project: Project }) {
               <StickerPanel
                 selected={selected}
                 onAdd={addSticker}
-                onRecolour={(c) => selected && ed.patchLayer(selected.id, { color: c, src: stickerSrc(selected.sticker ?? "star", c) })}
+                onRecolour={(c) => selected && selected.sticker !== "custom" && ed.patchLayer(selected.id, { color: c, src: stickerSrc(selected.sticker ?? "star", c) })}
+                mine={myStickers}
+                onMake={setCutoutSource}
+                onAddMine={addMySticker}
+                onDeleteMine={(id) => void deleteMySticker(id).then(() => setMyStickers((all) => all.filter((s) => s.id !== id)))}
+              />
+              <CutoutDialog
+                source={cutoutSource}
+                onClose={() => setCutoutSource(null)}
+                onDone={(s) => {
+                  setMyStickers((all) => [s, ...all]);
+                  addMySticker(s);
+                  setCutoutSource(null);
+                  track("sticker_made", {});
+                  toast.success("Sticker saved to My stickers and added to the slide.");
+                }}
               />
             </TabsContent>
 
@@ -717,6 +774,34 @@ function Editor({ project }: { project: Project }) {
                   onCheckedChange={(on) => ed.setGradient(on ? { from: design.background, to: "#1f6f54", angle: 90 } : null)}
                 />
               </div>
+              <div className={styles.field}>
+                <span id="pattern-label">Pattern</span>
+                <Select value={design.pattern?.kind ?? "none"} onValueChange={(v) => setPattern(v === "none" ? null : { kind: v as Pattern["kind"], color: design.pattern?.color ?? readableOn(design.background), opacity: design.pattern?.opacity ?? 0.3 })}>
+                  <SelectTrigger aria-labelledby="pattern-label">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {PATTERN_KINDS.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {{ grid: "Grid paper", dots: "Dots", lines: "Ruled lines", stripes: "Stripes", checks: "Checks", grain: "Paper grain" }[k]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {design.pattern && (
+                <div className={styles.fields}>
+                  <label className={styles.fieldRow}>
+                    <span>Pattern colour</span>
+                    <Input type="color" className={styles.colour} value={design.pattern.color} onChange={(e) => setPattern({ ...design.pattern!, color: e.target.value })} />
+                  </label>
+                  <div className={styles.field}>
+                    <span id="pattern-strength">Strength {Math.round(design.pattern.opacity * 100)}%</span>
+                    <Slider aria-labelledby="pattern-strength" min={5} max={100} value={[Math.round(design.pattern.opacity * 100)]} onValueChange={([v]) => setPattern({ ...design.pattern!, opacity: v / 100 })} />
+                  </div>
+                </div>
+              )}
               {design.gradient && (
                 <div className={styles.fields}>
                   <label className={styles.fieldRow}>

@@ -51,6 +51,8 @@ export type Layer = {
   sticker?: string;
   /** Set on stickers the collage shuffle placed, so the next shuffle can replace them without touching yours. */
   auto?: boolean;
+  /** Set on decorations a theme placed, so choosing another theme replaces them. */
+  themeDecor?: boolean;
   /** Drawing layers: the line, as fractions of the layer's box. */
   stroke?: StrokeData;
   /** Text layers. */
@@ -75,7 +77,12 @@ export type Design = {
   layers: Layer[];
   /** Numbers on the slides, drawn into the exported pictures. */
   pageNumbers?: PageNumbers | null;
+  /** A pattern over the background colour or gradient, such as grid paper. */
+  pattern?: Pattern | null;
 };
+
+export const PATTERN_KINDS = ["grid", "dots", "lines", "stripes", "checks", "grain"] as const;
+export type Pattern = { kind: (typeof PATTERN_KINDS)[number]; color: string; opacity: number };
 
 export type PageNumbers = {
   style: "fraction" | "number" | "dots";

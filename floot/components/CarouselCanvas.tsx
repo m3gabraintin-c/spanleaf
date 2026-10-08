@@ -3,6 +3,7 @@ import Konva from "konva";
 import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, Line, Shape, Transformer } from "react-konva";
 import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf } from "../helpers/carouselModel";
 import { clipUrl } from "../helpers/videoClips";
+import { patternTile } from "../helpers/patterns";
 import { measureText } from "../helpers/measureText";
 import { cropRect, isAdjusted } from "../helpers/photoStyle";
 import { Guide, snapBox } from "../helpers/snapping";
@@ -246,6 +247,9 @@ export const CarouselCanvas = ({ design, selectedId, onSelect, onPatch, stageRef
                     fillLinearGradientEndPoint={line.end}
                     fillLinearGradientColorStops={[0, gradient.from, 1, gradient.to]}
                   />
+                )}
+                {design.pattern && (
+                  <Rect width={total} height={height} listening={false} fillPatternImage={patternTile(design.pattern) as unknown as HTMLImageElement} fillPatternRepeat="repeat" />
                 )}
                 {design.layers.map((l) =>
                   l.type === "video" ? (

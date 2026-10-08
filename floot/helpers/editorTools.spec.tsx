@@ -135,16 +135,53 @@ describe("themes", () => {
       const d = applyTheme(base, t.id);
       expect(d.background).toBe(t.background);
       expect(d.gradient).toEqual(t.gradient);
-      for (const l of d.layers) {
+      expect(d.pattern).toEqual(t.pattern);
+      for (const l of d.layers.filter((x) => x.type === "image")) {
         expect(l.radius).toBe(t.radius);
         expect(l.border).toEqual(t.border);
         expect(Math.abs(l.rotation)).toBeLessThanOrEqual(t.tilt + 1e-9);
+        expect(l.adjust).toEqual(t.adjust);
       }
     }
   });
 
+  it("scatters the theme's decorations on every slide, marked as the theme's, and swaps them when the theme changes", () => {
+    const d3 = { ...base, slideCount: 3 };
+    for (const t of THEMES) {
+      const d = applyTheme(d3, t.id);
+      const decor = d.layers.filter((l) => l.themeDecor);
+      if (t.decor.length === 0) {
+        expect(decor.length).toBe(0);
+        continue;
+      }
+      expect(decor.length).toBeGreaterThanOrEqual(6);
+      for (const l of decor) expect(t.decor.some((x) => x.sticker === l.sticker && x.colour === l.color)).toBe(true);
+      const again = applyTheme(applyTheme(d, "clean"), t.id);
+      expect(again.layers.filter((l) => l.themeDecor).length).toBe(decor.length);
+      expect(applyTheme(d, "clean").layers.some((l) => l.themeDecor)).toBe(false);
+    }
+  });
+
+  it("keeps your own stickers and stays within the layer limit on a very long project", () => {
+    const mine = { ...photo("mine"), type: "sticker" as const };
+    const long = { ...base, slideCount: 500, layers: [...base.layers, mine] };
+    const d = applyTheme(long, "y2k");
+    expect(d.layers.some((l) => l.id === "mine")).toBe(true);
+    expect(d.layers.length).toBeLessThanOrEqual(500);
+  });
+
+  it("has at least 16 themes, each with a name, a blurb and a unique id", () => {
+    expect(THEMES.length).toBeGreaterThanOrEqual(16);
+    expect(new Set(THEMES.map((t) => t.id)).size).toBe(THEMES.length);
+    for (const t of THEMES) expect(t.name && t.blurb.length > 20).toBeTruthy();
+  });
+
   it("is the same every time, and an unknown theme changes nothing", () => {
-    expect(applyTheme(base, "scrapbook")).toEqual(applyTheme(base, "scrapbook"));
+    let n = 0;
+    const ids = () => `d${++n}`;
+    const a = applyTheme(base, "scrapbook", ids);
+    n = 0;
+    expect(applyTheme(base, "scrapbook", ids)).toEqual(a);
     expect(applyTheme(base, "nope")).toBe(base);
   });
 });
