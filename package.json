@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "predev": "node scripts/fetch-model.mjs || echo \"Cut out won't work until the model downloads: run npm run models\"",
     "dev": "next dev",
     "build": "node scripts/fetch-model.mjs && next build",
     "start": "next start",
