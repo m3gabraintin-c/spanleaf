@@ -1,4 +1,5 @@
 import Konva from "konva";
+import { arcFor } from "./curvedText";
 
 /** The height of a text layer's words at its width, measured without drawing it. */
 export const measureText = (t: {
@@ -9,7 +10,9 @@ export const measureText = (t: {
   bold?: boolean;
   letterSpacing?: number;
   lineHeight?: number;
+  curve?: number;
 }): number => {
+  if (t.curve) return arcFor(t.w, t.fontSize || 64, t.curve).height;
   const node = new Konva.Text({
     text: t.text || " ",
     fontFamily: t.fontFamily || "Inter Tight",

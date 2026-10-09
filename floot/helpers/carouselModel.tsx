@@ -20,7 +20,19 @@ export const FORMAT_KEYS = Object.keys(FORMATS) as FormatKey[];
 export type Gradient = { from: string; to: string; angle: number };
 
 export type Crop = { zoom: number; x: number; y: number };
-export type Adjust = { brightness: number; contrast: number; saturation: number };
+export type Adjust = {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  /** Orange (positive) or blue, -100 to 100. */
+  warmth?: number;
+  /** Magenta (positive) or green, -100 to 100. */
+  tint?: number;
+  /** Darker corners, 0 to 100. */
+  vignette?: number;
+  /** Film grain, 0 to 100. */
+  grain?: number;
+};
 export type StrokeData = { color: string; width: number; points: number[] };
 
 export type Layer = {
@@ -69,6 +81,11 @@ export type Layer = {
   textShadow?: boolean;
   letterSpacing?: number;
   lineHeight?: number;
+  /** Text layers: bends the words into an arc, from -100 (a smile) to 100 (an arch). 0 or unset is straight. */
+  curve?: number;
+  /** Video layers: the part of the clip that plays, in seconds. Unset means the whole clip. */
+  trimStart?: number;
+  trimEnd?: number;
 };
 
 export type Design = {
@@ -127,6 +144,20 @@ export const uid = () => crypto.randomUUID();
 
 export const clampSlides = (n: number) =>
   Math.min(MAX_SLIDES, Math.max(1, Math.round(Number.isFinite(n) ? n : 1)));
+
+/**
+ * The part of a video layer that plays: kept inside the clip and at least half a second long (or the whole clip
+ * when it is shorter than that). A clip of unknown length gives all zeros.
+ */
+export const trimWindow = (l: Pick<Layer, "duration" | "trimStart" | "trimEnd">) => {
+  const d = Number.isFinite(l.duration) && (l.duration ?? 0) > 0 ? (l.duration as number) : 0;
+  if (!d) return { start: 0, end: 0, length: 0 };
+  const min = Math.min(0.5, d);
+  const start = Math.min(Math.max(0, Number(l.trimStart) || 0), d - min);
+  const end = Math.min(d, Math.max(start + min, l.trimEnd ?? d));
+  const r = (n: number) => Math.round(n * 100) / 100;
+  return { start: r(start), end: r(end), length: r(end - start) };
+};
 
 export const newDesign = (format: FormatKey, slideCount: number): Design => ({
   format,

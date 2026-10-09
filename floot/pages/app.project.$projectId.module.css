@@ -7,6 +7,19 @@
   font-family: var(--font-family-base);
 }
 
+/* Read out by screen readers, not shown. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .loading {
   display: flex;
   flex-direction: column;
@@ -89,6 +102,9 @@
   background: var(--sidebar);
   overflow-y: auto;
   padding: var(--spacing-3);
+  /* Room to scroll the last controls clear of the badge in the bottom corner. */
+  padding-bottom: 5rem;
+  scroll-padding-bottom: 5rem;
 }
 
 .tabsList {

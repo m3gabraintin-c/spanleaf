@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/Tabs";
 import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import { CarouselCanvas } from "../components/CarouselCanvas";
 import type { Pen } from "../components/CarouselCanvas";
-import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel } from "../components/EditorPanels";
+import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel, VideoPanel } from "../components/EditorPanels";
 import { ExportDialog, PhonePreview, ShortcutsDialog } from "../components/EditorDialogs";
 import { CutoutDialog } from "../components/CutoutDialog";
 import { FirstRunTour } from "../components/FirstRunTour";
@@ -66,17 +66,18 @@ import {
   SLIDE_WIDTH,
   slideOf,
   rotatedBy,
+  trimWindow,
   uid,
 } from "../helpers/carouselModel";
 import { StorageFullError, getProject, saveProject } from "../helpers/projectStorage";
 import { useEditorState } from "../helpers/useEditorState";
 import { preparePicture } from "../helpers/preparePicture";
 import { measureText } from "../helpers/measureText";
-import { ExportOptions, exportSlideVideo, exportSlides, recordingType, renderSlide } from "../helpers/exportSlides";
+import { ClipPlay, ExportOptions, exportSlideVideo, exportSlides, recordingType, renderSlide } from "../helpers/exportSlides";
 import { flipPicture } from "../helpers/flipPicture";
 import { addClip } from "../helpers/videoClips";
 import { track } from "../helpers/analytics";
-import { CollagePlan, applyPlan, cleanPlan, photosOf, randomPlan, shuffleLayout } from "../helpers/collage";
+import { CollagePlan, applyPlan, cleanPlan, collageItemsOf, randomPlan, shuffleLayout } from "../helpers/collage";
 import { makeThumb } from "../helpers/makeThumb";
 import { MySticker, deleteMySticker, listMyStickers } from "../helpers/myStickers";
 import { CollagePlanError, postCollagePlan } from "../endpoints/collage-plan_POST.schema";
@@ -204,6 +205,30 @@ function Editor({ project }: { project: Project }) {
     setAlso([]);
   };
   const go = useCallback((index: number) => setGoTo({ index, nonce: Math.random() }), []);
+
+  // ---- keyboard on the canvas: Tab picks layers in drawing order, Enter opens the right settings
+  const cycleLayers = (dir: 1 | -1) => {
+    if (drawing || design.layers.length === 0) return false;
+    const ids = design.layers.map((l) => l.id);
+    const at = selectedId ? ids.indexOf(selectedId) : -1;
+    const next = at === -1 ? (dir > 0 ? 0 : ids.length - 1) : at + dir;
+    if (next < 0 || next >= ids.length) {
+      // Past either end, let go so the next Tab leaves the canvas.
+      selectOnly(null);
+      return false;
+    }
+    const l = design.layers[next];
+    selectOnly(l.id);
+    const s = Math.max(0, Math.min(design.slideCount - 1, slideOf(l)));
+    if (s !== current) go(s);
+    return true;
+  };
+  const activateSelected = () => {
+    if (!selected) return;
+    const where = ({ text: "text", image: "photos", video: "photos", sticker: "stickers", drawing: "layers" } as const)[selected.type];
+    setTab(where);
+    if (selected.type === "text") setTimeout(() => document.getElementById("words-input")?.focus(), 80);
+  };
 
   useEffect(() => track("project_opened", { slides: project.design.slideCount }), [project.design.slideCount]);
   useEffect(() => void listMyStickers().then(setMyStickers, () => setMyStickers([])), []);
@@ -377,9 +402,10 @@ function Editor({ project }: { project: Project }) {
   };
 
   const addText = () => {
+    const id = uid();
     const base = { text: "Your words here", fontFamily: "Fraunces", fontSize: 110, w: 800, bold: false };
     ed.addLayer({
-      id: uid(),
+      id,
       type: "text",
       name: "Text",
       ...base,
@@ -391,6 +417,7 @@ function Editor({ project }: { project: Project }) {
       rotation: 0,
       locked: false,
     });
+    selectOnly(id);
     setTab("text");
   };
 
@@ -510,11 +537,15 @@ function Editor({ project }: { project: Project }) {
     }
   };
 
-  const videosOnSlide = (i: number) =>
-    (contentRef.current?.find(".video") ?? [])
-      .filter((n) => slideOf({ x: n.x(), w: n.width() }) === i)
-      .map((n) => (n as Konva.Image).image())
-      .filter((v): v is HTMLVideoElement => v instanceof HTMLVideoElement);
+  /** The clips on a slide, each with the part of it that plays. */
+  const videosOnSlide = (i: number): ClipPlay[] =>
+    (contentRef.current?.find(".video") ?? []).flatMap((n) => {
+      const layer = design.layers.find((l) => l.id === n.id());
+      const el = (n as Konva.Image).image();
+      if (!layer || !(el instanceof HTMLVideoElement) || slideOf(layer) !== i) return [];
+      const t = trimWindow({ ...layer, duration: layer.duration || el.duration });
+      return [{ el, start: t.start, end: t.end }];
+    });
 
   const runVideoExport = async () => {
     const stage = stageRef.current;
@@ -543,7 +574,9 @@ function Editor({ project }: { project: Project }) {
 
   const setPageNumbers = (pn: PageNumbers | null) => ed.apply((d) => ({ ...d, pageNumbers: pn }));
   const hasVideo = design.layers.some((l) => l.type === "video");
-  const photoCount = photosOf(design).length;
+  const collageItems = collageItemsOf(design);
+  const photoCount = collageItems.filter((l) => l.type === "image").length;
+  const clipCount = collageItems.length - photoCount;
 
   /**
    * Shuffles the photos into a new collage. The layout is worked out here; then the AI looks at small copies of the
@@ -558,8 +591,12 @@ function Editor({ project }: { project: Project }) {
     if (aiCollage) {
       setBusy("Arranging…");
       try {
-        // The AI sees at most 30 photos; any more keep the random plan.
-        const picked = order.slice(0, 30).map((id) => laid.layers.find((l) => l.id === id)!);
+        // The AI sees at most 30 photos; any more, and the videos, keep the random plan.
+        const picked = order
+          .map((id) => laid.layers.find((l) => l.id === id)!)
+          .filter((l) => l.type === "image" && l.src)
+          .slice(0, 30);
+        if (picked.length === 0) throw new Error("no photos");
         const photos = await Promise.all(picked.map(async (l) => ({ id: l.id, thumb: await makeThumb(l.src!), slide: Math.max(0, slideOf(l)), landscape: l.w >= l.h })));
         const ai = await postCollagePlan({ photos });
         const aiIds = new Set(picked.map((l) => l.id));
@@ -569,7 +606,8 @@ function Editor({ project }: { project: Project }) {
         };
         usedAi = true;
       } catch (e) {
-        if (e instanceof CollagePlanError && e.code === "OUT_OF_CREDITS") console.warn("Collage AI is out of credits; used a random look.");
+        if (e instanceof Error && e.message === "no photos") usedAi = false;
+        else if (e instanceof CollagePlanError && e.code === "OUT_OF_CREDITS") console.warn("Collage AI is out of credits; used a random look.");
         else toast.message("The AI wasn't available, so this is a quick random look. Press Shuffle again to retry.");
       } finally {
         setBusy(null);
@@ -577,7 +615,7 @@ function Editor({ project }: { project: Project }) {
     }
     ed.apply(() => applyPlan(laid, cleanPlan(plan, order)));
     go(0);
-    track("collage_shuffle", { photos: order.length, ai: usedAi });
+    track("collage_shuffle", { photos: order.length, clips: clipCount, ai: usedAi });
   };
 
   const changeFormat = (format: FormatKey) => {
@@ -641,7 +679,8 @@ function Editor({ project }: { project: Project }) {
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} onTour={() => setTourAgain(true)} />
       <FirstRunTour forceOpen={tourAgain} onClose={() => setTourAgain(false)} />
 
-      <div className={styles.body}>
+      <main className={styles.body}>
+        <h1 className={styles.srOnly}>Editing {title || "Untitled"}</h1>
         <CarouselCanvas
           className={styles.canvas}
           design={design}
@@ -657,7 +696,16 @@ function Editor({ project }: { project: Project }) {
           onStroke={addStroke}
           onErase={(ids) => ed.removeLayers(ids, "erase")}
           playVideos={playVideos}
+          onKeyCycle={cycleLayers}
+          onActivate={activateSelected}
         />
+        <p aria-live="polite" className={styles.srOnly}>
+          {picked.length > 1
+            ? `${picked.length} layers selected.`
+            : selected
+              ? `${{ image: selected.src ? "Photo" : "Empty frame", text: "Text", sticker: "Sticker", drawing: "Drawing", video: "Video" }[selected.type]} ${selected.type === "text" ? (selected.text ?? "").slice(0, 60) : selected.name} selected, on slide ${Math.max(0, slideOf(selected)) + 1}.${selected.locked ? " Locked." : ""}`
+              : ""}
+        </p>
 
         <aside className={styles.panel} aria-label="Tools">
           <Tabs value={tab} onValueChange={setTab}>
@@ -694,7 +742,7 @@ function Editor({ project }: { project: Project }) {
               )}
               <p className={styles.hint}>Videos: MP4, WebM or MOV, up to 90 seconds and 200 MB. They play muted. To keep the movement, export a slide with a video as a video from the Export button.</p>
               <div className={styles.shuffleBox}>
-                <Button onClick={() => void shuffleCollage()} disabled={!!busy || photoCount === 0}>
+                <Button onClick={() => void shuffleCollage()} disabled={!!busy || collageItems.length === 0}>
                   <Shuffle size={16} /> {busy === "Arranging…" ? "Arranging…" : "Shuffle collage"}
                 </Button>
                 <div className={styles.fieldRow}>
@@ -702,11 +750,14 @@ function Editor({ project }: { project: Project }) {
                   <Switch aria-labelledby="ai-collage" checked={aiCollage} onCheckedChange={setAiCollage} />
                 </div>
                 <p className={styles.hint}>
-                  Puts your {photoCount === 1 ? "photo" : `${photoCount} photos`} in a new order and a new layout, tilts some of them and adds tape, pins and flowers. Each press gives a different look, and undo goes back.
+                  Puts your {photoCount === 1 ? "photo" : `${photoCount} photos`}
+                  {clipCount ? ` and ${clipCount === 1 ? "video" : `${clipCount} videos`}` : ""} in a new order and a new layout, tilts some of them and adds tape, pins and flowers. Each press gives a different look, and undo goes back.
                   {aiCollage ? " To do this, small blurry copies of your photos are sent to an AI service. Switch it off to keep everything on your device." : ""}
                 </p>
               </div>
-              {selected?.type === "image" && !selected.src ? (
+              {selected?.type === "video" ? (
+                <VideoPanel layer={selected} onPatch={(p, k) => ed.patchLayer(selected.id, p, k)} />
+              ) : selected?.type === "image" && !selected.src ? (
                 <>
                   <p className={styles.hint}>This is an empty frame. Choose a photo to put in it. It is left out of the exported pictures until it has a photo.</p>
                   <Button
@@ -722,7 +773,7 @@ function Editor({ project }: { project: Project }) {
               ) : selected?.type === "image" ? (
                 <PhotoStylePanel layer={selected} onPatch={(p, k) => ed.patchLayer(selected.id, p, k)} onFlip={(a) => void flip(a)} />
               ) : (
-                <p className={styles.hint}>Click a photo on the slides to crop it, flip it, frame it, or change its colours.</p>
+                <p className={styles.hint}>Click a photo on the slides to crop it, flip it, frame it, or change its colours. Click a video to trim it.</p>
               )}
             </TabsContent>
 
@@ -774,7 +825,7 @@ function Editor({ project }: { project: Project }) {
                 <div className={styles.fields}>
                   <label className={styles.field}>
                     <span>Words</span>
-                    <Textarea value={selected.text ?? ""} rows={3} disabled={selected.locked} onChange={(e) => patchText({ text: e.target.value }, "text")} />
+                    <Textarea id="words-input" value={selected.text ?? ""} rows={3} disabled={selected.locked} onChange={(e) => patchText({ text: e.target.value }, "text")} />
                   </label>
                   <div className={styles.field}>
                     <span id="font-label">Font</span>
@@ -818,6 +869,11 @@ function Editor({ project }: { project: Project }) {
                   <div className={styles.field}>
                     <span id="lh-label">Line height {(selected.lineHeight ?? 1).toFixed(2)}</span>
                     <Slider aria-labelledby="lh-label" min={0.8} max={2} step={0.05} value={[selected.lineHeight ?? 1]} disabled={selected.locked} onValueChange={([v]) => patchText({ lineHeight: v }, "leading")} />
+                  </div>
+                  <div className={styles.field}>
+                    <span id="curve-label">Curve {selected.curve ?? 0}</span>
+                    <Slider aria-labelledby="curve-label" min={-100} max={100} value={[selected.curve ?? 0]} disabled={selected.locked} onValueChange={([v]) => patchText({ curve: v === 0 ? undefined : v }, "curve")} />
+                    <span className={styles.hint}>Bends the words into an arch (right) or a smile (left). Curved words sit on one line.</span>
                   </div>
                   <div className={styles.fieldRow}>
                     <span id="out-label">Outline</span>
@@ -1090,6 +1146,15 @@ function Editor({ project }: { project: Project }) {
                       );
                     })}
                   </div>
+                  <h3 className={styles.subhead}>Turn</h3>
+                  <div className={styles.grid2}>
+                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, -90))}>
+                      <RotateCcw size={14} /> Left 90°
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, 90))}>
+                      <RotateCw size={14} /> Right 90°
+                    </Button>
+                  </div>
                   <h3 className={styles.subhead}>Order</h3>
                   <div className={styles.grid2}>
                     <Button variant="outline" size="sm" onClick={() => ed.reorder(selected.id, "front")}>
@@ -1103,15 +1168,6 @@ function Editor({ project }: { project: Project }) {
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => ed.reorder(selected.id, "backward")}>
                       Backward
-                    </Button>
-                  </div>
-                  <h3 className={styles.subhead}>Turn</h3>
-                  <div className={styles.grid2}>
-                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, -90))}>
-                      <RotateCcw size={14} /> Left 90°
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={selected.locked} onClick={() => ed.patchLayer(selected.id, rotatedBy(selected, 90))}>
-                      <RotateCw size={14} /> Right 90°
                     </Button>
                   </div>
                   <div className={styles.grid2}>
@@ -1156,7 +1212,7 @@ function Editor({ project }: { project: Project }) {
             </TabsContent>
           </Tabs>
         </aside>
-      </div>
+      </main>
     </div>
   );
 }

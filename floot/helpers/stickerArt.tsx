@@ -28,9 +28,54 @@ export const STICKERS = [
     h: 160,
     art: (c: string) => `<path d="M60 96 L60 154" stroke="#9a9a9a" stroke-width="6" stroke-linecap="round"/><circle cx="60" cy="56" r="46" fill="${c}"/><circle cx="44" cy="40" r="12" fill="#ffffff" opacity="0.55"/>`,
   },
+  {
+    id: "brush",
+    name: "Brush stroke",
+    w: 400,
+    h: 130,
+    art: (c: string) =>
+      `<path d="M18 70 C40 44 96 34 160 34 C230 34 300 30 372 40 C390 43 396 56 388 68 C380 80 360 84 330 86 C260 92 180 98 110 96 C66 95 30 92 18 84 C10 79 12 74 18 70 Z" fill="${c}"/><path d="M60 52 C140 44 250 42 350 48" stroke="#ffffff" stroke-opacity="0.22" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M80 82 C170 86 260 82 340 76" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M372 40 l18 -6 M388 68 l8 4 M18 84 l-10 6" stroke="${c}" stroke-width="5" stroke-linecap="round"/>`,
+  },
+  {
+    id: "ring",
+    name: "Hand-drawn ring",
+    w: 220,
+    h: 220,
+    art: (c: string) => `<path d="M110 20 C170 18 205 60 200 110 C196 165 150 200 100 198 C48 196 14 156 18 104 C22 58 60 26 122 30" fill="none" stroke="${c}" stroke-width="13" stroke-linecap="round"/>`,
+  },
+  {
+    id: "underline",
+    name: "Scribble underline",
+    w: 360,
+    h: 90,
+    art: (c: string) => `<path d="M12 46 C90 30 200 26 348 34" fill="none" stroke="${c}" stroke-width="12" stroke-linecap="round"/><path d="M40 66 C130 54 230 56 320 60" fill="none" stroke="${c}" stroke-width="8" stroke-linecap="round"/>`,
+  },
+  {
+    id: "arrow",
+    name: "Drawn arrow",
+    w: 300,
+    h: 170,
+    art: (c: string) => `<path d="M24 146 C70 60 160 34 262 52" fill="none" stroke="${c}" stroke-width="12" stroke-linecap="round"/><path d="M226 26 L266 52 L232 88" fill="none" stroke="${c}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>`,
+  },
 ] as const;
 
 export type StickerId = (typeof STICKERS)[number]["id"];
+
+/** Stickers that stretch freely in length instead of keeping their shape. Tape also keeps its torn ends the same size. */
+export const STRETCHY: readonly string[] = ["tape", "brush", "underline"];
+
+/**
+ * The outline of a strip of tape w by h, as x, y pairs: straight long sides and zigzag torn ends. The teeth depend
+ * on the height only, so stretching the tape longer never stretches its ends.
+ */
+export const tapeOutline = (w: number, h: number): number[] => {
+  const teeth = 6;
+  const d = Math.min(h * 0.16, w / 6);
+  const pts: number[] = [];
+  for (let i = 0; i <= teeth; i++) pts.push(i % 2 ? d : 0, (i * h) / teeth);
+  for (let i = teeth; i >= 0; i--) pts.push(w - (i % 2 ? d : 0), (i * h) / teeth);
+  return pts.map((n) => Math.round(n * 100) / 100);
+};
 
 export const STICKER_COLOURS = ["#f6d94a", "#f66dbb", "#e5484d", "#30a46c", "#0090ff", "#8e4ec6", "#1d211e", "#ffffff"];
 

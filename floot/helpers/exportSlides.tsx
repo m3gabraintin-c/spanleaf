@@ -111,8 +111,23 @@ export const recordingType = () => {
 };
 
 /**
- * Records one slide as a silent video while its clips play from the start, for as long as the longest clip (at
- * most 60 seconds). The editor shows the recording at full size while it runs.
+ * A clip on the slide being recorded, and the part of it that plays (its trim), in seconds.
+ */
+export type ClipPlay = { el: HTMLVideoElement; start: number; end: number };
+
+const seekTo = (v: HTMLVideoElement, t: number) =>
+  new Promise<void>((resolve) => {
+    if (Math.abs(v.currentTime - t) < 0.01) return resolve();
+    const done = () => resolve();
+    v.addEventListener("seeked", done, { once: true });
+    setTimeout(done, 1500);
+    v.currentTime = t;
+  });
+
+/**
+ * Records one slide as a silent video while its clips play from their trim start, for as long as the longest
+ * trimmed clip (at most 60 seconds). Shorter clips loop within their trim. The editor shows the recording at full
+ * size while it runs.
  */
 export const exportSlideVideo = async (
   stage: Konva.Stage,
@@ -120,14 +135,15 @@ export const exportSlideVideo = async (
   design: Design,
   slide: number,
   title: string,
-  videos: HTMLVideoElement[],
+  clips: ClipPlay[],
   onProgress?: (fraction: number) => void,
 ): Promise<void> => {
   const type = recordingType();
   if (!type) throw new Error("This browser can't record video. Try Chrome, Edge or a recent Safari.");
-  if (videos.length === 0) throw new Error("This slide has no video on it.");
+  if (clips.length === 0) throw new Error("This slide has no video on it.");
+  const videos = clips.map((c) => c.el);
   const height = FORMATS[design.format].height;
-  const seconds = Math.min(60, Math.max(...videos.map((v) => v.duration || 0)));
+  const seconds = Math.min(60, Math.max(...clips.map((c) => (c.end > c.start ? c.end - c.start : c.el.duration || 0))));
   if (!seconds) throw new Error("The video on this slide hasn't loaded yet. Try again in a moment.");
 
   await withExportView(stage, content, async () => {
@@ -148,16 +164,16 @@ export const exportSlideVideo = async (
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       const done = new Promise<void>((resolve) => (recorder.onstop = () => resolve()));
-      for (const v of videos) {
-        v.pause();
-        v.currentTime = 0;
-      }
+      for (const v of videos) v.pause();
+      await Promise.all(clips.map((c) => seekTo(c.el, c.start)));
       await Promise.all(videos.map((v) => v.play().catch(() => undefined)));
       recorder.start(250);
       const started = performance.now();
       await new Promise<void>((resolve) => {
         const frame = () => {
           const t = (performance.now() - started) / 1000;
+          // A clip that reaches the end of its trim goes back to its start, as it does in the editor.
+          for (const c of clips) if (c.end > c.start && c.el.currentTime >= c.end - 0.02) c.el.currentTime = c.start;
           content.draw();
           ctx.drawImage(layerCanvas, 0, 0, SLIDE_WIDTH, height);
           onProgress?.(Math.min(1, t / seconds));

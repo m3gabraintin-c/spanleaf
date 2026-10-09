@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useRef, useState, MutableRefObject } from "react";
 import Konva from "konva";
-import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, Line, Shape, Transformer, Group } from "react-konva";
+import { Stage, Layer as KLayer, Rect, Image as KImage, Text as KText, TextPath, Line, Shape, Transformer, Group } from "react-konva";
 import { Minus, Plus } from "lucide-react";
 import { maskPath } from "../helpers/maskPath";
-import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf } from "../helpers/carouselModel";
+import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf, trimWindow } from "../helpers/carouselModel";
 import { clipUrl } from "../helpers/videoClips";
 import { patternTile } from "../helpers/patterns";
 import { measureText } from "../helpers/measureText";
-import { cropRect, isAdjusted } from "../helpers/photoStyle";
+import { applyLook, cropRect, isAdjusted } from "../helpers/photoStyle";
+import { arcFor, oneLine } from "../helpers/curvedText";
+import { STRETCHY, tapeOutline } from "../helpers/stickerArt";
 import { Guide, snapBox } from "../helpers/snapping";
 import { PenMode, Point, localPoints, strokeHit, strokeLayer, tracePath } from "../helpers/strokes";
 import { useThemeMode } from "../helpers/themeMode";
 import styles from "./CarouselCanvas.module.css";
 
 const PAD = 28;
+
+/** Warmth, tint, vignette and grain, as a Konva filter. The settings are read from the node's "look" attribute. */
+const lookFilter = function (this: Konva.Node, imageData: ImageData) {
+  applyLook(imageData.data, imageData.width, imageData.height, this.getAttr("look") ?? {});
+} as unknown as typeof Konva.Filters.Brighten;
 
 const imageCache = new Map<string, HTMLImageElement>();
 const useImage = (src: string | undefined) => {
@@ -54,6 +61,10 @@ type Props = {
   onErase: (ids: string[]) => void;
   /** Whether video layers play in the editor. They are still at their first frame otherwise. */
   playVideos: boolean;
+  /** Keyboard: Tab and Shift+Tab on the canvas select the next or previous layer. Returns false at either end, so focus moves on. */
+  onKeyCycle: (dir: 1 | -1) => boolean;
+  /** Keyboard: Enter on the canvas opens the selected layer's settings (for text, its words). */
+  onActivate: () => void;
 };
 
 /**
@@ -62,7 +73,7 @@ type Props = {
  */
 const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3];
 
-export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase, playVideos }: Props) => {
+export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRef, contentRef, className, goTo, onCurrentSlide, drawing, pen, onStroke, onErase, playVideos, onKeyCycle, onActivate }: Props) => {
   // Dark or light changes the colours of the editing aids. Exports never include them.
   const { mode } = useThemeMode();
   const dark = mode === "dark" || (mode === "auto" && typeof document !== "undefined" && document.body.classList.contains("dark"));
@@ -260,6 +271,7 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
   const gradient = design.gradient;
   const line = gradient ? gradientLine(gradient.angle, total, height) : null;
   const textSelected = selected?.type === "text";
+  const stretchy = selected?.type === "sticker" && STRETCHY.includes(selected.sticker ?? "");
   // Changes to several layers at once share an undo step.
   const patch = multi ? (id: string, p: Partial<Layer>) => onPatch(id, p, "group") : onPatch;
   const endDrag = () => {
@@ -280,11 +292,27 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
       ref={scroller}
       className={styles.scroller}
       style={{ touchAction: drawing ? "none" : undefined }}
+      tabIndex={0}
+      role="region"
+      aria-label="Slides"
+      aria-describedby="canvas-keys"
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || drawing) return;
+        if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) {
+          if (onKeyCycle(e.shiftKey ? -1 : 1)) e.preventDefault();
+        } else if (e.key === "Enter" && selectedIds.length === 1) {
+          e.preventDefault();
+          onActivate();
+        }
+      }}
       onScroll={(e) => {
         setScrollLeft(e.currentTarget.scrollLeft);
         setScrollTop(e.currentTarget.scrollTop);
       }}
     >
+      <span id="canvas-keys" className={styles.srOnly}>
+        Tab and Shift Tab pick the next or previous layer. Arrow keys move it, with Shift for bigger steps. Enter edits it. Delete removes it. Escape lets go.
+      </span>
       <div className={styles.spacer} style={{ width: total * scale + PAD * 2, height: Math.max(view.h, contentH) }}>
         <div className={styles.stick} style={{ width: view.w, height: view.h }}>
           {view.w > 0 && (
@@ -336,6 +364,8 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
                     <WordsNode key={l.id} layer={l} {...common} />
                   ) : l.type === "drawing" ? (
                     <DrawingNode key={l.id} layer={l} {...common} />
+                  ) : l.type === "sticker" && l.sticker === "tape" ? (
+                    <TapeNode key={l.id} layer={l} {...common} />
                   ) : (
                     <PictureNode key={l.id} layer={l} {...common} />
                   ),
@@ -383,8 +413,14 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
                 <Transformer
                   ref={transformer}
                   rotateEnabled
-                  keepRatio={!textSelected}
-                  enabledAnchors={textSelected ? ["middle-left", "middle-right"] : ["top-left", "top-right", "bottom-left", "bottom-right"]}
+                  keepRatio={!textSelected && !stretchy}
+                  enabledAnchors={
+                    textSelected
+                      ? ["middle-left", "middle-right"]
+                      : stretchy
+                        ? ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]
+                        : ["top-left", "top-right", "bottom-left", "bottom-right"]
+                  }
                   anchorSize={Math.max(10, 12 / scale)}
                   borderStroke={dark ? "#4fb58a" : "#1f6f54"}
                   anchorStroke={dark ? "#4fb58a" : "#1f6f54"}
@@ -429,6 +465,8 @@ const VideoNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [missing, setMissing] = useState(false);
   const ref = useRef<Konva.Image | null>(null);
+  // Only the trimmed part plays. Paused, the clip shows the first frame of its trim.
+  const { start, end } = trimWindow(layer);
 
   useEffect(() => {
     let alive = true;
@@ -460,17 +498,23 @@ const VideoNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     if (!video) return;
     if (!playing) {
       video.pause();
-      ref.current?.getLayer()?.batchDraw();
+      const show = () => ref.current?.getLayer()?.batchDraw();
+      video.addEventListener("seeked", show, { once: true });
+      if (Math.abs(video.currentTime - start) > 0.01) video.currentTime = start;
+      show();
       return;
     }
+    if (video.currentTime < start || (end > start && video.currentTime >= end)) video.currentTime = start;
     void video.play().catch(() => undefined);
-    const anim = new Konva.Animation(() => undefined, ref.current?.getLayer());
+    const anim = new Konva.Animation(() => {
+      if (end > start && video.currentTime >= end - 0.02) video.currentTime = start;
+    }, ref.current?.getLayer());
     anim.start();
     return () => {
       anim.stop();
       video.pause();
     };
-  }, [video, playing]);
+  }, [video, playing, start, end]);
 
   const common = {
     x: layer.x,
@@ -519,6 +563,7 @@ const VideoNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     <KImage
       {...common}
       name="video"
+      id={layer.id}
       ref={(n) => {
         ref.current = n;
         if (n) nodes.set(layer.id, n);
@@ -544,17 +589,19 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
     const n = ref.current;
     if (!n || !img) return;
     if (isAdjusted(adj)) {
-      n.cache({ offset: layer.shadow ? 40 : 0 });
-      n.filters([Konva.Filters.Brighten, Konva.Filters.Contrast, Konva.Filters.HSL]);
+      n.filters([Konva.Filters.Brighten, Konva.Filters.Contrast, Konva.Filters.HSL, lookFilter]);
       n.brightness(adj.brightness / 100);
       n.contrast(adj.contrast);
       n.saturation(adj.saturation / 50);
+      n.setAttr("look", { warmth: adj.warmth ?? 0, tint: adj.tint ?? 0, vignette: adj.vignette ?? 0, grain: adj.grain ?? 0 });
+      // Cached after the settings, so the filters run with them.
+      n.cache({ offset: layer.shadow ? 40 : 0 });
     } else {
       n.filters([]);
       n.clearCache();
     }
     n.getLayer()?.batchDraw();
-  }, [img, adj?.brightness, adj?.contrast, adj?.saturation, layer.w, layer.h, layer.crop?.zoom, layer.crop?.x, layer.crop?.y, layer.shadow, layer.radius, layer.border?.width]);
+  }, [img, adj?.brightness, adj?.contrast, adj?.saturation, adj?.warmth, adj?.tint, adj?.vignette, adj?.grain, layer.w, layer.h, layer.crop?.zoom, layer.crop?.x, layer.crop?.y, layer.shadow, layer.radius, layer.border?.width, layer.mask]);
 
   // A photo layer with no picture is an empty frame, waiting for a photo. It is never exported.
   if (!layer.src && layer.type === "image") {
@@ -717,6 +764,63 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     const family = layer.fontFamily || "Inter Tight";
     void document.fonts?.load(`${layer.bold ? "700" : "400"} 64px "${family}"`).then(() => ref.current?.getLayer()?.batchDraw(), () => undefined);
   }, [layer.fontFamily, layer.bold]);
+
+  // Curved words: a group the size of the layer, holding the words on their arc. The group is what moves and turns.
+  if (layer.curve) {
+    const fontSize = layer.fontSize || 64;
+    const arc = arcFor(layer.w, fontSize, layer.curve);
+    return (
+      <Group
+        ref={(n) => {
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        x={layer.x}
+        y={layer.y}
+        rotation={layer.rotation}
+        opacity={layer.opacity ?? 1}
+        draggable={!layer.locked && !disabled}
+        onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
+        onTouchStart={() => !disabled && onSelect(layer.id)}
+        onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+        onDragEnd={(e) => {
+          onDragEnd();
+          onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+        }}
+        onTransformEnd={(e) => {
+          const n = e.target;
+          const sx = n.scaleX();
+          n.scaleX(1);
+          n.scaleY(1);
+          const w = Math.max(48, Math.round(layer.w * sx));
+          onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w, h: measureText({ ...layer, w }), rotation: r2(n.rotation()) });
+        }}
+      >
+        <Rect width={layer.w} height={arc.height} fill="rgba(0,0,0,0)" />
+        <TextPath
+          ref={(n) => void (ref.current = n as unknown as Konva.Text | null)}
+          data={arc.data}
+          text={oneLine(layer.text || "")}
+          fontFamily={layer.fontFamily || "Inter Tight"}
+          fontSize={fontSize}
+          fontStyle={layer.bold ? "bold" : "normal"}
+          fill={layer.color || "#1d211e"}
+          align={layer.align || "center"}
+          letterSpacing={layer.letterSpacing ?? 0}
+          textBaseline="alphabetic"
+          stroke={layer.outline?.color}
+          strokeWidth={layer.outline?.width ?? 0}
+          fillAfterStrokeEnabled
+          shadowEnabled={!!layer.textShadow}
+          shadowColor="#000000"
+          shadowBlur={14}
+          shadowOffsetY={5}
+          shadowOpacity={0.45}
+          listening={false}
+        />
+      </Group>
+    );
+  }
   return (
   <KText
     ref={(n) => {
@@ -764,6 +868,53 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
   />
   );
 };
+
+/**
+ * Tape: a translucent strip with torn ends. Stretching it redraws it at the new size, so the ends keep their teeth
+ * instead of being pulled out of shape.
+ */
+const TapeNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => (
+  <Shape
+    ref={(n) => {
+      if (n) nodes.set(layer.id, n);
+      else nodes.delete(layer.id);
+    }}
+    x={layer.x}
+    y={layer.y}
+    width={layer.w}
+    height={layer.h}
+    rotation={layer.rotation}
+    opacity={(layer.opacity ?? 1) * 0.82}
+    fill={layer.color ?? "#f3ead7"}
+    draggable={!layer.locked && !disabled}
+    sceneFunc={(ctx, s) => {
+      const pts = tapeOutline(s.width(), s.height());
+      ctx.beginPath();
+      ctx.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+      ctx.closePath();
+      ctx.fillShape(s);
+    }}
+    onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
+    onTouchStart={() => !disabled && onSelect(layer.id)}
+    onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+    onDragEnd={(e) => {
+      onDragEnd();
+      onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+    }}
+    onTransform={(e) => {
+      const n = e.target;
+      n.width(Math.max(40, n.width() * n.scaleX()));
+      n.height(Math.max(16, n.height() * n.scaleY()));
+      n.scaleX(1);
+      n.scaleY(1);
+    }}
+    onTransformEnd={(e) => {
+      const n = e.target;
+      onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.round(n.width()), h: Math.round(n.height()), rotation: r2(n.rotation()) });
+    }}
+  />
+);
 
 const DrawingNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
   if (!layer.stroke) return null;

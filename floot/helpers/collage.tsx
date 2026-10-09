@@ -89,13 +89,16 @@ const fitInto = (aspect: number, maxW: number, maxH: number) => {
 /** The photos in a design (photo layers that have a picture). Empty template frames are left where they are. */
 export const photosOf = (d: Design) => d.layers.filter((l) => l.type === "image" && l.src);
 
+/** What the collage shuffle moves: photos that have a picture, and video clips. */
+export const collageItemsOf = (d: Design) => d.layers.filter((l) => (l.type === "image" && !!l.src) || (l.type === "video" && !!l.mediaKey));
+
 /**
- * Spreads the photos over the slides in a new order, in groups of one to three, upright. Adds slides when it needs
- * them and never removes any. Removes the stickers an earlier shuffle placed. Returns the new design and the order
- * the photos ended up in.
+ * Spreads the photos and videos over the slides in a new order, in groups of one to three, upright. Adds slides
+ * when it needs them and never removes any. Removes the stickers an earlier shuffle placed. Returns the new design
+ * and the order they ended up in.
  */
 export const shuffleLayout = (d: Design, seed: number): { design: Design; order: string[] } => {
-  const photos = photosOf(d);
+  const photos = collageItemsOf(d);
   if (photos.length === 0) return { design: d, order: [] };
   const rand = seeded(seed);
   const order = shuffled(photos, rand);

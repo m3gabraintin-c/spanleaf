@@ -2,8 +2,8 @@ import { Button } from "./Button";
 import { Slider } from "./Slider";
 import { Switch } from "./Switch";
 import { Input } from "./Input";
-import { Layer, MASK_SHAPES } from "../helpers/carouselModel";
-import { ADJUST_PRESETS, MAX_ZOOM, NO_ADJUST, isAdjusted } from "../helpers/photoStyle";
+import { Layer, MASK_SHAPES, trimWindow } from "../helpers/carouselModel";
+import { ADJUST_PRESETS, MAX_ZOOM, fullAdjust, isAdjusted } from "../helpers/photoStyle";
 import { PEN_COLOURS, PenMode } from "../helpers/strokes";
 import { STICKERS, STICKER_COLOURS, stickerSrc } from "../helpers/stickerArt";
 import { THEMES } from "../helpers/themes";
@@ -18,7 +18,7 @@ type Patch = (patch: Partial<Layer>, key?: string) => void;
 /** Crop, frame and adjust, for the selected photo. */
 export const PhotoStylePanel = ({ layer, onPatch, onFlip }: { layer: Layer; onPatch: Patch; onFlip: (axis: "horizontal" | "vertical") => void }) => {
   const crop = layer.crop ?? { zoom: 1, x: 0.5, y: 0.5 };
-  const adj = layer.adjust ?? NO_ADJUST;
+  const adj = fullAdjust(layer.adjust);
   const off = layer.locked;
   const setAdj = (a: typeof adj, key?: string) => onPatch({ adjust: isAdjusted(a) ? a : null }, key);
   return (
@@ -89,19 +89,57 @@ export const PhotoStylePanel = ({ layer, onPatch, onFlip }: { layer: Layer; onPa
       <h3 className={styles.head}>Adjust</h3>
       <div className={styles.chips} role="group" aria-label="Looks">
         {ADJUST_PRESETS.map((p) => (
-          <Button key={p.id} size="sm" variant={JSON.stringify(adj) === JSON.stringify(p.adjust) ? "primary" : "outline"} disabled={off} onClick={() => setAdj(p.adjust)}>
+          <Button key={p.id} size="sm" variant={JSON.stringify(adj) === JSON.stringify(p.adjust) ? "primary" : "outline"} aria-pressed={JSON.stringify(adj) === JSON.stringify(p.adjust)} disabled={off} onClick={() => setAdj(p.adjust)}>
             {p.name}
           </Button>
         ))}
       </div>
-      {(["brightness", "contrast", "saturation"] as const).map((k) => (
+      {(
+        [
+          ["brightness", "Brightness", -100],
+          ["contrast", "Contrast", -100],
+          ["saturation", "Saturation", -100],
+          ["warmth", "Warmth (blue to orange)", -100],
+          ["tint", "Tint (green to magenta)", -100],
+          ["vignette", "Vignette", 0],
+          ["grain", "Grain", 0],
+        ] as const
+      ).map(([k, label, min]) => (
         <div className={styles.field} key={k}>
           <span id={`adj-${k}`}>
-            {k[0].toUpperCase() + k.slice(1)} {adj[k]}
+            {label} {adj[k]}
           </span>
-          <Slider aria-labelledby={`adj-${k}`} min={-100} max={100} value={[adj[k]]} disabled={off} onValueChange={([v]) => setAdj({ ...adj, [k]: v }, `adj-${k}`)} />
+          <Slider aria-labelledby={`adj-${k}`} min={min} max={100} value={[adj[k]]} disabled={off} onValueChange={([v]) => setAdj({ ...adj, [k]: v }, `adj-${k}`)} />
         </div>
       ))}
+    </div>
+  );
+};
+
+/** Trim for the selected video: which part of the clip plays in the editor, the preview and the video export. */
+export const VideoPanel = ({ layer, onPatch }: { layer: Layer; onPatch: Patch }) => {
+  const d = layer.duration ?? 0;
+  const t = trimWindow(layer);
+  const off = layer.locked;
+  const s = (n: number) => `${n.toFixed(1)}s`;
+  if (!d) return <p className={styles.hint}>This clip's length isn't known, so it can't be trimmed. Add it again to trim it.</p>;
+  return (
+    <div className={styles.stack}>
+      <h3 className={styles.head}>Trim</h3>
+      <p className={styles.hint}>
+        Plays {s(t.start)} to {s(t.end)} of {s(d)}, so {s(t.length)} long. The editor, the phone preview and the video export all use this part, and it loops.
+      </p>
+      <div className={styles.field}>
+        <span id="trim-start">Start {s(t.start)}</span>
+        <Slider aria-labelledby="trim-start" min={0} max={d} step={0.1} value={[t.start]} disabled={off} onValueChange={([v]) => onPatch({ trimStart: Math.min(v, t.end - 0.5) }, "trim")} />
+      </div>
+      <div className={styles.field}>
+        <span id="trim-end">End {s(t.end)}</span>
+        <Slider aria-labelledby="trim-end" min={0} max={d} step={0.1} value={[t.end]} disabled={off} onValueChange={([v]) => onPatch({ trimEnd: Math.max(v, t.start + 0.5) }, "trim")} />
+      </div>
+      <Button variant="outline" size="sm" disabled={off || (t.start === 0 && t.end === d)} onClick={() => onPatch({ trimStart: undefined, trimEnd: undefined })}>
+        Use the whole clip
+      </Button>
     </div>
   );
 };
@@ -214,7 +252,7 @@ export const StickerPanel = ({
         </>
       )}
       <h3 className={styles.head}>Shapes</h3>
-      <p className={styles.hint}>Click a sticker to add it to the slide in view. Select one on the canvas to change its colour.</p>
+      <p className={styles.hint}>Click a sticker to add it to the slide in view. Select one on the canvas to change its colour. Tape, brush strokes and underlines stretch to any length: drag a side handle.</p>
       <div className={styles.stickerGrid}>
         {STICKERS.map((s) => (
           <button key={s.id} type="button" className={styles.stickerButton} aria-label={`Add ${s.name}`} onClick={() => onAdd(s.id, colour)}>
