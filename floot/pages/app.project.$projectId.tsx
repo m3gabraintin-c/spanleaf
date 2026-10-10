@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/Tabs";
 import { ThemeModeSwitch } from "../components/ThemeModeSwitch";
 import { CarouselCanvas } from "../components/CarouselCanvas";
 import type { Pen } from "../components/CarouselCanvas";
-import { DrawPanel, PhotoStylePanel, StickerPanel, ThemePanel, VideoPanel } from "../components/EditorPanels";
+import { DrawPanel, ExactBox, PhotoStylePanel, SlideStrip, StickerPanel, ThemePanel, VideoPanel } from "../components/EditorPanels";
 import { ExportDialog, PhonePreview, ShortcutsDialog } from "../components/EditorDialogs";
 import { CutoutDialog } from "../components/CutoutDialog";
 import { FirstRunTour } from "../components/FirstRunTour";
@@ -51,6 +51,7 @@ import { applyTheme, arrangePhotos } from "../helpers/themes";
 import {
   ALIGNMENTS,
   Alignment,
+  Design,
   FONTS,
   FORMATS,
   FORMAT_KEYS,
@@ -61,9 +62,12 @@ import {
   PageNumbers,
   PATTERN_KINDS,
   Pattern,
+  PICTURE_TYPES,
   Project,
   readableOn,
+  ShapeKind,
   SLIDE_WIDTH,
+  kindName,
   slideOf,
   rotatedBy,
   trimWindow,
@@ -72,10 +76,13 @@ import {
 import { StorageFullError, getProject, saveProject } from "../helpers/projectStorage";
 import { useEditorState } from "../helpers/useEditorState";
 import { preparePicture } from "../helpers/preparePicture";
-import { measureText } from "../helpers/measureText";
+import { measureText, richMeasure } from "../helpers/measureText";
+import { fitFontSize, plainText } from "../helpers/richText";
+import { loadHistory, saveHistory } from "../helpers/editHistory";
+import { ShareRecord, createShare, deleteShare, listShares, shareUrl } from "../helpers/shareLink";
 import { ClipPlay, ExportOptions, exportSlideVideo, exportSlides, recordingType, renderSlide } from "../helpers/exportSlides";
 import { flipPicture } from "../helpers/flipPicture";
-import { addClip } from "../helpers/videoClips";
+import { VIDEO_TYPES, addClip } from "../helpers/videoClips";
 import { track } from "../helpers/analytics";
 import { CollagePlan, applyPlan, cleanPlan, collageItemsOf, randomPlan, shuffleLayout } from "../helpers/collage";
 import { makeThumb } from "../helpers/makeThumb";
@@ -94,13 +101,19 @@ const ALIGN_ICONS: Record<Alignment, { label: string; Icon: typeof AlignStartVer
 
 export default function ProjectPage() {
   const { projectId } = useParams();
-  const [state, setState] = useState<{ status: "loading" } | { status: "missing" } | { status: "ready"; project: Project }>({ status: "loading" });
+  const [state, setState] = useState<{ status: "loading" } | { status: "missing" } | { status: "ready"; project: Project; past: Design[] }>({ status: "loading" });
 
   useEffect(() => {
     let alive = true;
     setState({ status: "loading" });
     getProject(projectId ?? "").then(
-      (p) => alive && setState(p ? { status: "ready", project: p } : { status: "missing" }),
+      async (p) => {
+        if (!alive) return;
+        if (!p) return setState({ status: "missing" });
+        // Undo steps from the last visit, so undo still works after a reload.
+        const past = await loadHistory(p.id);
+        if (alive) setState({ status: "ready", project: p, past });
+      },
       () => alive && setState({ status: "missing" }),
     );
     return () => {
@@ -130,11 +143,11 @@ export default function ProjectPage() {
       </div>
     );
   }
-  return <Editor key={state.project.id} project={state.project} />;
+  return <Editor key={state.project.id} project={state.project} past={state.past} />;
 }
 
-function Editor({ project }: { project: Project }) {
-  const ed = useEditorState(project.design);
+function Editor({ project, past }: { project: Project; past: Design[] }) {
+  const ed = useEditorState(project.design, past);
   const [title, setTitle] = useState(project.title);
   const [save, setSave] = useState<"saved" | "saving" | "unsaved" | "failed">("saved");
   const [tab, setTab] = useState("photos");
@@ -156,8 +169,8 @@ function Editor({ project }: { project: Project }) {
   const clips = useRef<HTMLInputElement>(null);
   /** The empty frame the next chosen photo goes into, when one was picked. */
   const fillFor = useRef<string | null>(null);
-  const latest = useRef({ design: ed.design, title });
-  latest.current = { design: ed.design, title };
+  const latest = useRef({ design: ed.design, title, past: ed.past });
+  latest.current = { design: ed.design, title, past: ed.past };
   const first = useRef(true);
 
   const { design, selectedId } = ed;
@@ -185,6 +198,8 @@ function Editor({ project }: { project: Project }) {
     setAlso(ids.slice(1));
   };
   const clipboard = useRef<{ layers: Layer[]; slide: number } | null>(null);
+  /** Set when a paste event has dealt with Ctrl or ⌘ + V, so the copied layers aren't pasted as well. */
+  const pasteHandled = useRef(false);
   const copyPicked = () => {
     clipboard.current = { layers: structuredClone(picked), slide: Math.max(0, slideOf(picked[0])) };
     toast.message(picked.length === 1 ? "Copied." : `Copied ${picked.length} layers.`);
@@ -206,6 +221,74 @@ function Editor({ project }: { project: Project }) {
   };
   const go = useCallback((index: number) => setGoTo({ index, nonce: Math.random() }), []);
 
+  // ---- share links for comments
+  const [shares, setShares] = useState<ShareRecord[]>([]);
+  const [sharing, setSharing] = useState<string | null>(null);
+  useEffect(() => void listShares(project.id).then(setShares, () => setShares([])), [project.id]);
+  const runShare = async () => {
+    const stage = stageRef.current;
+    const content = contentRef.current;
+    if (!stage || !content) return;
+    setPlayVideos(false);
+    setSharing("Drawing slides…");
+    try {
+      const rec = await createShare(project.id, stage, content, latest.current.design, latest.current.title, (done, all) =>
+        setSharing(done * 2 <= all ? `Drawing slides ${done}/${all / 2}` : `Uploading ${done - all / 2}/${all / 2}`),
+      );
+      setShares((s) => [rec, ...s]);
+      const copied = await navigator.clipboard.writeText(shareUrl(rec.id)).then(
+        () => true,
+        () => false,
+      );
+      toast.success(copied ? "Link made and copied. Send it to whoever you want comments from." : "Link made. Copy it from the list below.");
+      track("share_link", { slides: rec.slides });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The link couldn't be made.");
+    } finally {
+      setSharing(null);
+    }
+  };
+  const removeShare = async (rec: ShareRecord) => {
+    try {
+      await deleteShare(project.id, rec);
+      setShares((s) => s.filter((x) => x.id !== rec.id));
+      toast.message("Link deleted, with its pictures and comments.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The link couldn't be deleted.");
+    }
+  };
+
+  // ---- slide thumbnails, drawn while the Slides tab is open, a moment after each change
+  const [thumbs, setThumbs] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (tab !== "slides") return;
+    let alive = true;
+    const t = setTimeout(async () => {
+      const stage = stageRef.current;
+      const content = contentRef.current;
+      if (!stage || !content) return;
+      const out: Record<number, string> = {};
+      const n = Math.min(latest.current.design.slideCount, 60);
+      for (let i = 0; i < n; i++) {
+        if (!alive) return;
+        try {
+          out[i] = await renderSlide(stage, content, latest.current.design, i, 0.16);
+        } catch {
+          /* a slide that can't be drawn keeps its number only */
+        }
+        if (i % 6 === 5) {
+          setThumbs({ ...out });
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+      if (alive) setThumbs(out);
+    }, 700);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [tab, ed.version]);
+
   // ---- keyboard on the canvas: Tab picks layers in drawing order, Enter opens the right settings
   const cycleLayers = (dir: 1 | -1) => {
     if (drawing || design.layers.length === 0) return false;
@@ -225,7 +308,7 @@ function Editor({ project }: { project: Project }) {
   };
   const activateSelected = () => {
     if (!selected) return;
-    const where = ({ text: "text", image: "photos", video: "photos", sticker: "stickers", drawing: "layers" } as const)[selected.type];
+    const where = ({ text: "text", image: "photos", video: "photos", sticker: "stickers", shape: "stickers", drawing: "layers" } as const)[selected.type];
     setTab(where);
     if (selected.type === "text") setTimeout(() => document.getElementById("words-input")?.focus(), 80);
   };
@@ -256,6 +339,7 @@ function Editor({ project }: { project: Project }) {
     setSave("saving");
     try {
       await saveProject({ ...project, title: latest.current.title.trim() || "Untitled", design: latest.current.design, thumb: projectPreview() });
+      void saveHistory(project.id, latest.current.past);
       setSave("saved");
     } catch (e) {
       setSave("failed");
@@ -321,8 +405,12 @@ function Editor({ project }: { project: Project }) {
         copyPicked();
         removePicked();
       } else if (mod && e.key.toLowerCase() === "v") {
-        e.preventDefault();
-        pasteHere();
+        // The paste event that follows decides: a picture copied from elsewhere becomes a photo; otherwise the copied
+        // layers are pasted. Browsers that send no paste event get the copied layers.
+        pasteHandled.current = false;
+        setTimeout(() => {
+          if (!pasteHandled.current) pasteHere();
+        }, 80);
       } else if (mod && e.key.toLowerCase() === "d" && picked.length > 1) {
         e.preventDefault();
         copyPicked();
@@ -358,8 +446,66 @@ function Editor({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      pasteHandled.current = true;
+      const pics = Array.from(e.clipboardData?.files ?? []).filter((f) => PICTURE_TYPES.includes(f.type));
+      if (pics.length) {
+        e.preventDefault();
+        void addPhotos(pics);
+      } else pasteHere();
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
+
   // ---- adding things
-  const addPhotos = async (list: FileList | null) => {
+  /** Files dropped on the editor: photos and videos go in, anything else is refused with a reason. */
+  const dropFiles = (list: FileList) => {
+    const all = Array.from(list);
+    const pics = all.filter((f) => PICTURE_TYPES.includes(f.type));
+    const vids = all.filter((f) => VIDEO_TYPES.includes(f.type));
+    if (!pics.length && !vids.length) return void toast.error("Only photos (JPEG, PNG, WebP) and videos (MP4, WebM, MOV) can be added.");
+    void (async () => {
+      if (pics.length) await addPhotos(pics);
+      if (vids.length) await addVideos(vids);
+    })();
+  };
+
+  const addShape = (kind: ShapeKind) => {
+    const size = kind === "line" ? { w: 600, h: 14 } : kind === "ellipse" ? { w: 360, h: 360 } : { w: 520, h: 340 };
+    const id = uid();
+    ed.addLayer({
+      id,
+      type: "shape",
+      shape: kind,
+      name: kind === "rect" ? "Rectangle" : kind === "ellipse" ? "Circle" : "Line",
+      color: kind === "line" ? "#1d211e" : kind === "ellipse" ? "#f66dbb" : "#f6d94a",
+      radius: kind === "rect" ? 24 : undefined,
+      x: current * SLIDE_WIDTH + Math.round((SLIDE_WIDTH - size.w) / 2),
+      y: Math.round((height - size.h) / 2),
+      ...size,
+      rotation: 0,
+      locked: false,
+    });
+    selectOnly(id);
+  };
+
+  /** The biggest font size at which the longest line of the selected text still fits its box. */
+  const fitText = () => {
+    if (!selected || selected.type !== "text") return;
+    const measure = richMeasure({ ...selected, fontSize: 100 });
+    if (!measure) return;
+    const widths = plainText(selected.text ?? "")
+      .split("\n")
+      .map((line) => measure(line, false));
+    patchText({ fontSize: fitFontSize(widths, selected.w) });
+  };
+
+  const addPhotos = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     const chosen = Array.from(list).slice(0, 30);
     if (list.length > 30) toast.message("Added the first 30 photos.");
@@ -487,7 +633,7 @@ function Editor({ project }: { project: Project }) {
     ed.select(null);
   };
 
-  const addVideos = async (list: FileList | null) => {
+  const addVideos = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     for (const file of Array.from(list).slice(0, 5)) {
       try {
@@ -527,7 +673,7 @@ function Editor({ project }: { project: Project }) {
     setBusy(`Exporting 0 of ${total}`);
     try {
       await exportSlides(stage, content, design, title, options, (done, all) => setBusy(`Exporting ${done} of ${all}`));
-      toast.success(total === 1 ? "Slide downloaded." : `Downloaded ${total} slides as a zip.`);
+      toast.success(options.format === "pdf" ? `Downloaded ${total === 1 ? "1 slide" : `${total} slides`} as a PDF.` : total === 1 ? "Slide downloaded." : `Downloaded ${total} slides as a zip.`);
       track("export", { slides: total, format: options.format, width: options.width });
       setExportOpen(false);
     } catch (e) {
@@ -674,12 +820,28 @@ function Editor({ project }: { project: Project }) {
         caption={design.caption ?? ""}
         onCaption={(text) => ed.apply((d) => ({ ...d, caption: text.slice(0, 5000) }), "caption")}
         storyShape={design.format === "story_9_16"}
+        shares={shares}
+        sharing={sharing}
+        onShare={() => void runShare()}
+        onDeleteShare={(r) => void removeShare(r)}
       />
       <PhonePreview open={previewOpen} onOpenChange={setPreviewOpen} slideCount={design.slideCount} aspect={SLIDE_WIDTH / height} start={current} render={renderForPreview} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} onTour={() => setTourAgain(true)} />
       <FirstRunTour forceOpen={tourAgain} onClose={() => setTourAgain(false)} />
 
-      <main className={styles.body}>
+      <main
+        className={styles.body}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          dropFiles(e.dataTransfer.files);
+        }}
+      >
         <h1 className={styles.srOnly}>Editing {title || "Untitled"}</h1>
         <CarouselCanvas
           className={styles.canvas}
@@ -703,7 +865,7 @@ function Editor({ project }: { project: Project }) {
           {picked.length > 1
             ? `${picked.length} layers selected.`
             : selected
-              ? `${{ image: selected.src ? "Photo" : "Empty frame", text: "Text", sticker: "Sticker", drawing: "Drawing", video: "Video" }[selected.type]} ${selected.type === "text" ? (selected.text ?? "").slice(0, 60) : selected.name} selected, on slide ${Math.max(0, slideOf(selected)) + 1}.${selected.locked ? " Locked." : ""}`
+              ? `${kindName(selected)} ${selected.type === "text" ? (selected.text ?? "").slice(0, 60) : selected.name} selected, on slide ${Math.max(0, slideOf(selected)) + 1}.${selected.locked ? " Locked." : ""}`
               : ""}
         </p>
 
@@ -721,7 +883,9 @@ function Editor({ project }: { project: Project }) {
             </TabsList>
 
             <TabsContent value="photos" className={styles.tab}>
-              <p className={styles.hint}>JPEG, PNG or WebP, up to 25 MB each. Photos land on the slide in view. Drag one across a slide edge and it exports as two halves.</p>
+              <p className={styles.hint}>
+                JPEG, PNG or WebP, up to 25 MB each. You can also drop photos and videos onto the canvas, or paste a copied picture. Photos land on the slide in view. Drag one across a slide edge and it exports as two halves.
+              </p>
               <input ref={files} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="Choose photos" onChange={(e) => void addPhotos(e.target.files)} />
               <Button
                 onClick={() => {
@@ -771,7 +935,15 @@ function Editor({ project }: { project: Project }) {
                   </Button>
                 </>
               ) : selected?.type === "image" ? (
-                <PhotoStylePanel layer={selected} onPatch={(p, k) => ed.patchLayer(selected.id, p, k)} onFlip={(a) => void flip(a)} />
+                <PhotoStylePanel
+                  layer={selected}
+                  onPatch={(p, k) => ed.patchLayer(selected.id, p, k)}
+                  onFlip={(a) => void flip(a)}
+                  onReplace={() => {
+                    fillFor.current = selected.id;
+                    files.current?.click();
+                  }}
+                />
               ) : (
                 <p className={styles.hint}>Click a photo on the slides to crop it, flip it, frame it, or change its colours. Click a video to trim it.</p>
               )}
@@ -781,6 +953,8 @@ function Editor({ project }: { project: Project }) {
               <StickerPanel
                 selected={selected}
                 onAdd={addSticker}
+                onPatch={(p, k) => selected && ed.patchLayer(selected.id, p, k)}
+                onAddShape={addShape}
                 onRecolour={(c) => selected && selected.sticker !== "custom" && ed.patchLayer(selected.id, { color: c, src: stickerSrc(selected.sticker ?? "star", c) })}
                 mine={myStickers}
                 onMake={setCutoutSource}
@@ -826,6 +1000,7 @@ function Editor({ project }: { project: Project }) {
                   <label className={styles.field}>
                     <span>Words</span>
                     <Textarea id="words-input" value={selected.text ?? ""} rows={3} disabled={selected.locked} onChange={(e) => patchText({ text: e.target.value }, "text")} />
+                    <span className={styles.hint}>Put stars round words to highlight them, *like this*. They turn bold, in the highlight colour.</span>
                   </label>
                   <div className={styles.field}>
                     <span id="font-label">Font</span>
@@ -895,6 +1070,35 @@ function Editor({ project }: { project: Project }) {
                     <span id="tsh-label">Shadow</span>
                     <Switch aria-labelledby="tsh-label" checked={!!selected.textShadow} disabled={selected.locked} onCheckedChange={(on) => patchText({ textShadow: on })} />
                   </div>
+                  <h3 className={styles.subhead}>Colour</h3>
+                  <label className={styles.fieldRow}>
+                    <span>Highlight colour</span>
+                    <Input type="color" className={styles.colour} value={selected.accent ?? "#e5484d"} disabled={selected.locked} onChange={(e) => patchText({ accent: e.target.value }, "accent")} />
+                  </label>
+                  <div className={styles.fieldRow}>
+                    <span id="fade-label">Colour fade, top to bottom</span>
+                    <Switch
+                      aria-labelledby="fade-label"
+                      checked={!!selected.textGradient}
+                      disabled={selected.locked}
+                      onCheckedChange={(on) => patchText({ textGradient: on ? { from: selected.color ?? "#1d211e", to: "#e5484d" } : null })}
+                    />
+                  </div>
+                  {selected.textGradient && (
+                    <>
+                      <label className={styles.fieldRow}>
+                        <span>Top colour</span>
+                        <Input type="color" className={styles.colour} value={selected.textGradient.from} disabled={selected.locked} onChange={(e) => patchText({ textGradient: { ...selected.textGradient!, from: e.target.value } }, "fadefrom")} />
+                      </label>
+                      <label className={styles.fieldRow}>
+                        <span>Bottom colour</span>
+                        <Input type="color" className={styles.colour} value={selected.textGradient.to} disabled={selected.locked} onChange={(e) => patchText({ textGradient: { ...selected.textGradient!, to: e.target.value } }, "fadeto")} />
+                      </label>
+                    </>
+                  )}
+                  <Button variant="outline" size="sm" disabled={selected.locked} onClick={fitText}>
+                    Fit the words to the box width
+                  </Button>
                 </div>
               ) : (
                 <p className={styles.hint}>Add text, or click a text layer to change its words, font and colour.</p>
@@ -1084,15 +1288,18 @@ function Editor({ project }: { project: Project }) {
                   <p className={styles.hint}>Page numbers are part of the exported pictures.</p>
                 </div>
               )}
-              <ol className={styles.slideList} aria-label="Slides">
-                {Array.from({ length: Math.min(design.slideCount, 200) }, (_, i) => (
-                  <li key={i}>
-                    <button type="button" className={styles.slideButton} aria-current={i === current ? "true" : undefined} onClick={() => go(i)}>
-                      Slide {i + 1}
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              <p className={styles.hint}>Drag a slide onto another to move it there.{design.slideCount > 60 ? " Pictures are drawn for the first 60 slides." : ""}</p>
+              <SlideStrip
+                count={design.slideCount}
+                current={current}
+                thumbs={thumbs}
+                aspect={SLIDE_WIDTH / height}
+                onGo={go}
+                onMove={(from, to) => {
+                  ed.moveSlide(from, to);
+                  go(to);
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="layers" className={styles.tab}>
@@ -1135,6 +1342,12 @@ function Editor({ project }: { project: Project }) {
               ) : selected ? (
                 <div className={styles.fields}>
                   <h2 className={styles.subhead}>{selected.name}</h2>
+                  <h3 className={styles.subhead}>Position and size</h3>
+                  <ExactBox
+                    layer={selected}
+                    slide={Math.max(0, Math.min(design.slideCount - 1, slideOf(selected)))}
+                    onCommit={(p) => ed.patchLayer(selected.id, selected.type === "text" && p.w ? { ...p, h: measureText({ ...selected, ...p }) } : p)}
+                  />
                   <h3 className={styles.subhead}>Align to slide {slideOf(selected) + 1}</h3>
                   <div className={styles.alignRow} role="group" aria-label="Align to slide">
                     {ALIGNMENTS.map((how) => {
@@ -1202,7 +1415,7 @@ function Editor({ project }: { project: Project }) {
                           go(Math.max(0, Math.min(design.slideCount - 1, slideOf(l))));
                         }}
                       >
-                        {{ image: l.src ? "Photo" : "Empty frame", text: "Text", sticker: "Sticker", drawing: "Drawing", video: "Video" }[l.type]}: {l.name}
+                        {kindName(l)}: {l.name}
                         {l.locked ? " (locked)" : ""}
                       </button>
                     </li>

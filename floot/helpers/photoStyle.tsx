@@ -60,6 +60,14 @@ export const ADJUST_PRESETS: { id: string; name: string; adjust: Required<Adjust
 export const isAdjusted = (a: Adjust | null | undefined): a is Adjust =>
   !!a && Object.values(fullAdjust(a)).some((v) => v !== 0);
 
+/** Where things go on an instant-photo card w by h: an even white border, a deeper bottom, and the caption in it. */
+export const polaroidBox = (w: number, h: number) => {
+  const pad = Math.round(w * 0.055);
+  const bottom = Math.round(Math.min(h * 0.4, w * 0.24));
+  const photo = { x: pad, y: pad, w: Math.max(8, w - pad * 2), h: Math.max(8, h - pad - bottom) };
+  return { pad, bottom, photo, caption: { y: photo.y + photo.h, h: bottom, fontSize: Math.max(12, Math.round(bottom * 0.42)) } };
+};
+
 /** A repeatable 0 to 1 value for a pixel, so grain looks the same on every draw instead of flickering. */
 const noiseAt = (x: number, y: number) => {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;

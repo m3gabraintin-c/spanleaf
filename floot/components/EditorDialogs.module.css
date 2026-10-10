@@ -51,6 +51,29 @@
   color: var(--muted-foreground);
 }
 
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.links a {
+  color: var(--foreground);
+  font-family: var(--font-family-monospace);
+  font-size: 0.75rem;
+}
+
 .previewDialog {
   max-width: 26rem;
 }
@@ -90,6 +113,28 @@
   position: relative;
   width: 100%;
   background: #eeeeee;
+}
+
+/* The slides side by side, snapping one at a time, as a feed carousel does. */
+.track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.cell {
+  flex: 0 0 100%;
+  height: 100%;
+  scroll-snap-align: start;
 }
 
 .slideImg {

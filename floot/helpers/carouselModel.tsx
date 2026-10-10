@@ -37,7 +37,7 @@ export type StrokeData = { color: string; width: number; points: number[] };
 
 export type Layer = {
   id: string;
-  type: "image" | "text" | "sticker" | "drawing" | "video";
+  type: "image" | "text" | "sticker" | "drawing" | "video" | "shape";
   name: string;
   x: number;
   y: number;
@@ -86,7 +86,30 @@ export type Layer = {
   /** Video layers: the part of the clip that plays, in seconds. Unset means the whole clip. */
   trimStart?: number;
   trimEnd?: number;
+  /** Shape layers: which shape. The fill is `color`, the outline is `border`, and `radius` rounds a rectangle. */
+  shape?: ShapeKind;
+  /** Sticker layers: an outline that follows the sticker's own edge, like a die-cut sticker. */
+  edge?: { color: string; width: number } | null;
+  /** Photo layers: shown as an instant photo, a white card with a wider bottom and a handwritten caption. */
+  polaroid?: { caption: string } | null;
+  /** Text layers: a colour fade from top to bottom instead of one colour. */
+  textGradient?: { from: string; to: string } | null;
+  /** Text layers: the colour of words marked with *stars*. */
+  accent?: string;
 };
+
+export const SHAPE_KINDS = ["rect", "ellipse", "line"] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
+
+/** What a layer is called in lists and when it is read out. */
+export const kindName = (l: Pick<Layer, "type" | "src" | "shape">) =>
+  l.type === "image"
+    ? l.src
+      ? "Photo"
+      : "Empty frame"
+    : l.type === "shape"
+      ? ({ rect: "Rectangle", ellipse: "Circle", line: "Line" } as const)[l.shape ?? "rect"]
+      : ({ text: "Text", sticker: "Sticker", drawing: "Drawing", video: "Video" } as const)[l.type];
 
 export type Design = {
   format: FormatKey;

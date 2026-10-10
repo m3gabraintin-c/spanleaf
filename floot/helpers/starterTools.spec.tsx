@@ -76,7 +76,8 @@ describe("templates", () => {
         const frames = d.layers.filter((l) => l.type === "image");
         expect(frames.length).toBe(t.frames.length);
         expect(frames.every((f) => !f.src)).toBe(true);
-        expect(d.layers.filter((l) => l.type === "text").length).toBe(1);
+        // A title, plus a label for each frame in templates that number or name their frames.
+        expect(d.layers.filter((l) => l.type === "text").length).toBe(1 + (t.labels ? frames.length : 0));
         expect(d.slideCount).toBeGreaterThanOrEqual(2);
       }
     }

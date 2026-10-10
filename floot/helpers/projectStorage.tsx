@@ -2,6 +2,7 @@ import { del, get, keys, set } from "idb-keyval";
 import { Project, newDesign, uid, FormatKey } from "./carouselModel";
 import { buildTemplate } from "./templates";
 import { removeClip } from "./videoClips";
+import { deleteHistory } from "./editHistory";
 
 /**
  * Projects live in this browser (IndexedDB). Deleting moves a project to the bin,
@@ -20,7 +21,7 @@ export const listProjects = async (): Promise<Project[]> => {
   );
   const cutoff = Date.now() - BIN_DAYS * 864e5;
   const expired = found.filter((p): p is Project => !!p && !!p.deletedAt && p.deletedAt < cutoff);
-  await Promise.all(expired.map((p) => del(KEY(p.id))));
+  await Promise.all(expired.flatMap((p) => [del(KEY(p.id)), deleteHistory(p.id)]));
   // A clip is removed only when no project left still uses it (a copied project shares its clips).
   const kept = found.filter((p): p is Project => !!p && !expired.includes(p));
   const used = new Set(kept.flatMap((p) => p.design.layers.map((l) => l.mediaKey).filter(Boolean)));

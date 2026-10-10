@@ -7,9 +7,12 @@ import { Design, FORMATS, Layer, SLIDE_WIDTH, gradientLine, pageLabel, slideOf, 
 import { clipUrl } from "../helpers/videoClips";
 import { patternTile } from "../helpers/patterns";
 import { measureText } from "../helpers/measureText";
-import { applyLook, cropRect, isAdjusted } from "../helpers/photoStyle";
+import { applyLook, cropRect, isAdjusted, polaroidBox } from "../helpers/photoStyle";
 import { arcFor, oneLine } from "../helpers/curvedText";
 import { STRETCHY, tapeOutline } from "../helpers/stickerArt";
+import { outlinedImage } from "../helpers/stickerEdge";
+import { hasMarkup, layoutRich, plainText } from "../helpers/richText";
+import { richMeasure } from "../helpers/measureText";
 import { Guide, snapBox } from "../helpers/snapping";
 import { PenMode, Point, localPoints, strokeHit, strokeLayer, tracePath } from "../helpers/strokes";
 import { useThemeMode } from "../helpers/themeMode";
@@ -271,7 +274,7 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
   const gradient = design.gradient;
   const line = gradient ? gradientLine(gradient.angle, total, height) : null;
   const textSelected = selected?.type === "text";
-  const stretchy = selected?.type === "sticker" && STRETCHY.includes(selected.sticker ?? "");
+  const stretchy = (selected?.type === "sticker" && STRETCHY.includes(selected.sticker ?? "")) || selected?.type === "shape";
   // Changes to several layers at once share an undo step.
   const patch = multi ? (id: string, p: Partial<Layer>) => onPatch(id, p, "group") : onPatch;
   const endDrag = () => {
@@ -366,6 +369,8 @@ export const CarouselCanvas = ({ design, selectedIds, onSelect, onPatch, stageRe
                     <DrawingNode key={l.id} layer={l} {...common} />
                   ) : l.type === "sticker" && l.sticker === "tape" ? (
                     <TapeNode key={l.id} layer={l} {...common} />
+                  ) : l.type === "shape" ? (
+                    <ShapeNode key={l.id} layer={l} {...common} />
                   ) : (
                     <PictureNode key={l.id} layer={l} {...common} />
                   ),
@@ -583,6 +588,11 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
   const ref = useRef<Konva.Image | null>(null);
   const crop = img && layer.type === "image" ? cropRect(layer.natural?.w ?? img.naturalWidth, layer.natural?.h ?? img.naturalHeight, layer.w, layer.h, layer.crop) : undefined;
   const adj = layer.adjust;
+  // Stickers with an edge show a copy of the picture with its outline drawn round it.
+  const edgeImg = useMemo(
+    () => (img && layer.type === "sticker" && layer.edge?.width ? outlinedImage(img, (layer.edge.width * (img.naturalWidth || layer.w)) / Math.max(1, layer.w), layer.edge.color) : null),
+    [img, layer.type, layer.edge?.width, layer.edge?.color, layer.w],
+  );
 
   // Filters need the picture cached. Cache it only while an adjustment is on.
   useEffect(() => {
@@ -601,7 +611,7 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
       n.clearCache();
     }
     n.getLayer()?.batchDraw();
-  }, [img, adj?.brightness, adj?.contrast, adj?.saturation, adj?.warmth, adj?.tint, adj?.vignette, adj?.grain, layer.w, layer.h, layer.crop?.zoom, layer.crop?.x, layer.crop?.y, layer.shadow, layer.radius, layer.border?.width, layer.mask]);
+  }, [img, adj?.brightness, adj?.contrast, adj?.saturation, adj?.warmth, adj?.tint, adj?.vignette, adj?.grain, layer.w, layer.h, layer.crop?.zoom, layer.crop?.x, layer.crop?.y, layer.shadow, layer.radius, layer.border?.width, layer.mask, !!layer.polaroid]);
 
   // A photo layer with no picture is an empty frame, waiting for a photo. It is never exported.
   if (!layer.src && layer.type === "image") {
@@ -667,6 +677,56 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
 
   // A photo in a shape: a group clipped to the shape moves and turns as one, with an optional outline in the
   // border colour drawn on top. The picture inside keeps its crop and colour changes.
+  // An instant photo: a white card, the photo inset with a deeper bottom, and a handwritten caption.
+  if (layer.polaroid && layer.type === "image") {
+    const pb = polaroidBox(layer.w, layer.h);
+    const pcrop = img ? cropRect(layer.natural?.w ?? img.naturalWidth, layer.natural?.h ?? img.naturalHeight, pb.photo.w, pb.photo.h, layer.crop) : undefined;
+    return (
+      <Group
+        ref={(n) => {
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        x={layer.x}
+        y={layer.y}
+        rotation={layer.rotation}
+        opacity={layer.opacity ?? 1}
+        draggable={!layer.locked && !disabled}
+        onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
+        onTouchStart={() => !disabled && onSelect(layer.id)}
+        onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+        onDragEnd={(e) => {
+          onDragEnd();
+          onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+        }}
+        onTransformEnd={(e) => {
+          const n = e.target;
+          const sx = n.scaleX();
+          const sy = n.scaleY();
+          n.scaleX(1);
+          n.scaleY(1);
+          onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.max(24, Math.round(layer.w * sx)), h: Math.max(24, Math.round(layer.h * sy)), rotation: r2(n.rotation()) });
+        }}
+      >
+        <Rect width={layer.w} height={layer.h} fill="#fbfaf6" stroke="#e4ded1" strokeWidth={1} shadowEnabled={layer.shadow !== false} shadowColor="#000000" shadowBlur={18} shadowOffsetY={8} shadowOpacity={0.22} />
+        <KImage ref={(n) => void (ref.current = n)} image={img ?? undefined} crop={pcrop} x={pb.photo.x} y={pb.photo.y} width={pb.photo.w} height={pb.photo.h} />
+        <KText
+          text={layer.polaroid.caption}
+          x={pb.pad}
+          y={pb.caption.y}
+          width={layer.w - pb.pad * 2}
+          height={pb.caption.h}
+          align="center"
+          verticalAlign="middle"
+          fontFamily="Caveat"
+          fontSize={pb.caption.fontSize}
+          fill="#2b2b2b"
+          listening={false}
+        />
+      </Group>
+    );
+  }
+
   if (layer.mask && layer.mask !== "none" && layer.type === "image") {
     const shape = layer.mask;
     return (
@@ -721,7 +781,7 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
         if (n) nodes.set(layer.id, n);
         else nodes.delete(layer.id);
       }}
-      image={img ?? undefined}
+      image={edgeImg ?? img ?? undefined}
       crop={crop}
       x={layer.x}
       y={layer.y}
@@ -759,11 +819,111 @@ const PictureNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, d
 
 const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => {
   const ref = useRef<Konva.Text | null>(null);
+  // Highlighted words are laid out here, so a font arriving late needs a fresh layout, not just a redraw.
+  const [, setFontTick] = useState(0);
   // A font is downloaded the first time it is used, so draw again once it has arrived.
   useEffect(() => {
     const family = layer.fontFamily || "Inter Tight";
-    void document.fonts?.load(`${layer.bold ? "700" : "400"} 64px "${family}"`).then(() => ref.current?.getLayer()?.batchDraw(), () => undefined);
+    void Promise.all([document.fonts?.load(`400 64px "${family}"`), document.fonts?.load(`700 64px "${family}"`)]).then(
+      () => {
+        setFontTick((t) => t + 1);
+        ref.current?.getLayer()?.batchDraw();
+      },
+      () => undefined,
+    );
   }, [layer.fontFamily, layer.bold]);
+  const gradient = layer.textGradient
+    ? {
+        fillPriority: "linear-gradient",
+        fillLinearGradientStartPoint: { x: 0, y: 0 },
+        fillLinearGradientEndPoint: { x: 0, y: Math.max(1, layer.h) },
+        fillLinearGradientColorStops: [0, layer.textGradient.from, 1, layer.textGradient.to],
+      }
+    : {};
+  const handlers = {
+    draggable: !layer.locked && !disabled,
+    onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => !disabled && onSelect(layer.id, e.evt.shiftKey),
+    onTouchStart: () => !disabled && onSelect(layer.id),
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey),
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      onDragEnd();
+      onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+    },
+    onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
+      const n = e.target;
+      const sx = n.scaleX();
+      n.scaleX(1);
+      n.scaleY(1);
+      const w = Math.max(48, Math.round(layer.w * sx));
+      onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w, h: measureText({ ...layer, w }), rotation: r2(n.rotation()) });
+    },
+  };
+
+  // Words between *stars* are drawn bold in the accent colour, so the words are laid out and drawn piece by piece.
+  const measure = hasMarkup(layer.text) && !layer.curve ? richMeasure(layer) : null;
+  if (measure) {
+    const fontSize = layer.fontSize || 64;
+    const lh = fontSize * (layer.lineHeight ?? 1);
+    const family = layer.fontFamily || "Inter Tight";
+    const lines = layoutRich(layer.text ?? "", layer.w, measure);
+    return (
+      <Shape
+        ref={(n) => {
+          ref.current = n as unknown as Konva.Text | null;
+          if (n) nodes.set(layer.id, n);
+          else nodes.delete(layer.id);
+        }}
+        x={layer.x}
+        y={layer.y}
+        width={layer.w}
+        height={Math.max(layer.h, lines.length * lh)}
+        rotation={layer.rotation}
+        opacity={layer.opacity ?? 1}
+        fill="#000000"
+        {...handlers}
+        sceneFunc={(kctx) => {
+          const ctx = kctx._context as CanvasRenderingContext2D;
+          ctx.save();
+          if ("letterSpacing" in ctx) (ctx as unknown as { letterSpacing: string }).letterSpacing = `${layer.letterSpacing ?? 0}px`;
+          ctx.textBaseline = "middle";
+          let fade: CanvasGradient | null = null;
+          if (layer.textGradient) {
+            fade = ctx.createLinearGradient(0, 0, 0, Math.max(1, lines.length * lh));
+            fade.addColorStop(0, layer.textGradient.from);
+            fade.addColorStop(1, layer.textGradient.to);
+          }
+          if (layer.textShadow) {
+            ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+            ctx.shadowBlur = 14;
+            ctx.shadowOffsetY = 5;
+          }
+          lines.forEach((line, i) => {
+            const ox = layer.align === "center" ? (layer.w - line.width) / 2 : layer.align === "right" ? layer.w - line.width : 0;
+            const y = i * lh + lh / 2;
+            for (const p of line.pieces) {
+              if (!p.text.trim()) continue;
+              ctx.font = `${layer.bold || p.accent ? "700" : "400"} ${fontSize}px "${family}"`;
+              if (layer.outline?.width) {
+                ctx.lineWidth = layer.outline.width;
+                ctx.lineJoin = "round";
+                ctx.strokeStyle = layer.outline.color;
+                ctx.strokeText(p.text, ox + p.x, y);
+              }
+              ctx.fillStyle = p.accent ? (layer.accent ?? "#e5484d") : (fade ?? (layer.color || "#1d211e"));
+              ctx.fillText(p.text, ox + p.x, y);
+            }
+          });
+          ctx.restore();
+        }}
+        hitFunc={(ctx, shape) => {
+          ctx.beginPath();
+          ctx.rect(0, 0, layer.w, Math.max(layer.h, lines.length * lh));
+          ctx.closePath();
+          ctx.fillShape(shape);
+        }}
+      />
+    );
+  }
 
   // Curved words: a group the size of the layer, holding the words on their arc. The group is what moves and turns.
   if (layer.curve) {
@@ -800,11 +960,11 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
         <TextPath
           ref={(n) => void (ref.current = n as unknown as Konva.Text | null)}
           data={arc.data}
-          text={oneLine(layer.text || "")}
+          text={plainText(oneLine(layer.text || ""))}
           fontFamily={layer.fontFamily || "Inter Tight"}
           fontSize={fontSize}
           fontStyle={layer.bold ? "bold" : "normal"}
-          fill={layer.color || "#1d211e"}
+          fill={layer.textGradient?.from ?? (layer.color || "#1d211e")}
           align={layer.align || "center"}
           letterSpacing={layer.letterSpacing ?? 0}
           textBaseline="alphabetic"
@@ -844,6 +1004,7 @@ const WordsNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, dis
     shadowBlur={14}
     shadowOffsetY={5}
     shadowOpacity={0.45}
+    {...gradient}
     opacity={layer.opacity ?? 1}
     x={layer.x}
     y={layer.y}
@@ -906,6 +1067,76 @@ const TapeNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disa
       const n = e.target;
       n.width(Math.max(40, n.width() * n.scaleX()));
       n.height(Math.max(16, n.height() * n.scaleY()));
+      n.scaleX(1);
+      n.scaleY(1);
+    }}
+    onTransformEnd={(e) => {
+      const n = e.target;
+      onPatch(layer.id, { x: r2(n.x()), y: r2(n.y()), w: Math.round(n.width()), h: Math.round(n.height()), rotation: r2(n.rotation()) });
+    }}
+  />
+);
+
+/** Traces a shape layer's outline: a rectangle with rounded corners, an ellipse, or a line with round ends. */
+const traceShape = (ctx: Konva.Context, kind: Layer["shape"], w: number, h: number, radius: number) => {
+  ctx.beginPath();
+  if (kind === "ellipse") {
+    const k = 0.5522848;
+    const rx = w / 2;
+    const ry = h / 2;
+    ctx.moveTo(w, ry);
+    ctx.bezierCurveTo(w, ry + ry * k, rx + rx * k, h, rx, h);
+    ctx.bezierCurveTo(rx - rx * k, h, 0, ry + ry * k, 0, ry);
+    ctx.bezierCurveTo(0, ry - ry * k, rx - rx * k, 0, rx, 0);
+    ctx.bezierCurveTo(rx + rx * k, 0, w, ry - ry * k, w, ry);
+  } else {
+    const r = Math.max(0, Math.min(kind === "line" ? Math.min(w, h) / 2 : radius, w / 2, h / 2));
+    ctx.moveTo(r, 0);
+    ctx.lineTo(w - r, 0);
+    ctx.quadraticCurveTo(w, 0, w, r);
+    ctx.lineTo(w, h - r);
+    ctx.quadraticCurveTo(w, h, w - r, h);
+    ctx.lineTo(r, h);
+    ctx.quadraticCurveTo(0, h, 0, h - r);
+    ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+  }
+  ctx.closePath();
+};
+
+/** A plain shape. Stretching redraws it at the new size, so corners and borders keep their size. */
+const ShapeNode = ({ layer, nodes, onSelect, onPatch, onDragMove, onDragEnd, disabled }: NodeProps) => (
+  <Shape
+    ref={(n) => {
+      if (n) nodes.set(layer.id, n);
+      else nodes.delete(layer.id);
+    }}
+    x={layer.x}
+    y={layer.y}
+    width={layer.w}
+    height={layer.h}
+    rotation={layer.rotation}
+    opacity={layer.opacity ?? 1}
+    fill={layer.color ?? "#1f6f54"}
+    stroke={layer.border?.width ? layer.border.color : undefined}
+    strokeWidth={layer.border?.width ?? 0}
+    strokeScaleEnabled={false}
+    draggable={!layer.locked && !disabled}
+    sceneFunc={(ctx, s) => {
+      traceShape(ctx, layer.shape, s.width(), s.height(), layer.radius ?? 0);
+      ctx.fillStrokeShape(s);
+    }}
+    onMouseDown={(e) => !disabled && onSelect(layer.id, (e.evt as MouseEvent).shiftKey)}
+    onTouchStart={() => !disabled && onSelect(layer.id)}
+    onDragMove={(e) => onDragMove(layer, e.target, !!(e.evt as MouseEvent)?.altKey)}
+    onDragEnd={(e) => {
+      onDragEnd();
+      onPatch(layer.id, { x: r2(e.target.x()), y: r2(e.target.y()) });
+    }}
+    onTransform={(e) => {
+      const n = e.target;
+      n.width(Math.max(8, n.width() * n.scaleX()));
+      n.height(Math.max(4, n.height() * n.scaleY()));
       n.scaleX(1);
       n.scaleY(1);
     }}

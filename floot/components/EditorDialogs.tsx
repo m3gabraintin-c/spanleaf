@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import type { ExportOptions } from "../helpers/exportSlides";
 import { Textarea } from "./Textarea";
 import { instagramChecks } from "../helpers/instagram";
+import type { ShareRecord } from "../helpers/shareLink";
+import { shareUrl } from "../helpers/shareLink";
 import styles from "./EditorDialogs.module.css";
 
 /** Reads "1-3, 5" into slide numbers counting from 0. Numbers outside 1..total are dropped. */
@@ -37,6 +39,10 @@ export const ExportDialog = ({
   caption,
   onCaption,
   storyShape,
+  shares,
+  sharing,
+  onShare,
+  onDeleteShare,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -51,13 +57,21 @@ export const ExportDialog = ({
   onCaption: (text: string) => void;
   /** The slides are 9:16, which Instagram crops in a feed carousel. */
   storyShape: boolean;
+  /** Links made for this project, newest first. */
+  shares: ShareRecord[];
+  /** What making a link is doing right now, or null. */
+  sharing: string | null;
+  onShare: () => void;
+  onDeleteShare: (record: ShareRecord) => void;
 }) => {
   const [which, setWhich] = useState<"all" | "current" | "some">("all");
   const [list, setList] = useState("");
-  const [format, setFormat] = useState<"png" | "jpeg">("png");
+  const [format, setFormat] = useState<"png" | "jpeg" | "pdf">("png");
   const [quality, setQuality] = useState(92);
   const [width, setWidth] = useState<1080 | 2160>(1080);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   useEffect(() => setCopied(false), [caption]);
   const chosen = which === "all" ? undefined : which === "current" ? [current] : parseSlideList(list, slideCount);
   const none = which === "some" && (chosen?.length ?? 0) === 0;
@@ -69,7 +83,9 @@ export const ExportDialog = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Export</DialogTitle>
-          <DialogDescription>Each slide is a separate picture. Several slides download as one zip.</DialogDescription>
+          <DialogDescription>
+            {format === "pdf" ? "Every chosen slide goes into one PDF, a page each. LinkedIn takes carousels this way." : "Each slide is a separate picture. Several slides download as one zip."}
+          </DialogDescription>
         </DialogHeader>
         <div className={styles.form}>
           <div className={styles.field}>
@@ -93,17 +109,18 @@ export const ExportDialog = ({
           </div>
           <div className={styles.field}>
             <span id="fmt-l">Format</span>
-            <Select value={format} onValueChange={(v) => setFormat(v as "png" | "jpeg")}>
+            <Select value={format} onValueChange={(v) => setFormat(v as "png" | "jpeg" | "pdf")}>
               <SelectTrigger aria-labelledby="fmt-l">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="png">PNG (best quality, larger files)</SelectItem>
                 <SelectItem value="jpeg">JPEG (smaller files)</SelectItem>
+                <SelectItem value="pdf">PDF (one file, for LinkedIn)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {format === "jpeg" && (
+          {format !== "png" && (
             <div className={styles.field}>
               <span id="q-l">Quality {quality}%</span>
               <Slider aria-labelledby="q-l" min={50} max={100} value={[quality]} onValueChange={([v]) => setQuality(v)} />
@@ -159,6 +176,56 @@ export const ExportDialog = ({
               ))}
             </ul>
           )}
+          <div className={styles.videoBox}>
+            <strong>Share for comments</strong>
+            <p>
+              Make a link to show friends before you post. They swipe through the slides and leave comments, no account needed. Anyone with the link can see it. Pictures of the slides
+              {slideCount > 30 ? " (the first 30)" : ""} are kept on Spanleaf's server for 30 days, or until you delete the link.
+            </p>
+            <Button variant="outline" size="sm" disabled={!!sharing || !!busy} onClick={onShare}>
+              {sharing ?? "Make a link"}
+            </Button>
+            {shares.length > 0 && (
+              <ul className={styles.links} aria-label="Your links">
+                {shares.map((s) => (
+                  <li key={s.id}>
+                    <a href={shareUrl(s.id)} target="_blank" rel="noreferrer">
+                      /s/{s.id}
+                    </a>
+                    <small>until {new Date(s.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</small>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void navigator.clipboard.writeText(shareUrl(s.id)).then(
+                          () => setLinkCopied(s.id),
+                          () => setLinkCopied(null),
+                        )
+                      }
+                    >
+                      {linkCopied === s.id ? "Copied" : "Copy"}
+                    </Button>
+                    {confirmDelete === s.id ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setConfirmDelete(null);
+                          onDeleteShare(s);
+                        }}
+                      >
+                        Delete for good
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(s.id)}>
+                        Delete
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -174,8 +241,9 @@ export const ExportDialog = ({
 };
 
 /**
- * The carousel the way it will look in a phone feed: one slide at a time in a phone-sized frame. Swipe, use the
- * arrows, or the arrow keys. Each slide is drawn when it is shown.
+ * The carousel the way it will look in a phone feed: a phone-sized frame you swipe through like the real thing, so
+ * you can see a photo running across a slide edge line up. Arrows and arrow keys work too. Slides are drawn as they
+ * come near.
  */
 export const PhonePreview = ({
   open,
@@ -195,19 +263,25 @@ export const PhonePreview = ({
 }) => {
   const [index, setIndex] = useState(start);
   const [pictures, setPictures] = useState<Record<number, string>>({});
-  const touch = useRef<number | null>(null);
+  const track = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
       setIndex(start);
       setPictures({});
+      // Wait for the dialog to lay out, then start on the slide in view.
+      const t = setTimeout(() => {
+        const el = track.current;
+        if (el) el.scrollTo({ left: start * el.clientWidth });
+      }, 50);
+      return () => clearTimeout(t);
     }
   }, [open, start]);
 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    for (const i of [index, index + 1, index - 1]) {
+    for (const i of [index, index + 1, index - 1, index + 2]) {
       if (i < 0 || i >= slideCount || pictures[i]) continue;
       void render(i).then((src) => alive && setPictures((p) => ({ ...p, [i]: src })));
     }
@@ -218,7 +292,12 @@ export const PhonePreview = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, index, slideCount, render]);
 
-  const go = (d: number) => setIndex((i) => Math.min(slideCount - 1, Math.max(0, i + d)));
+  const go = (d: number) => {
+    const el = track.current;
+    const to = Math.min(slideCount - 1, Math.max(0, index + d));
+    if (el) el.scrollTo({ left: to * el.clientWidth, behavior: "smooth" });
+    setIndex(to);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -226,7 +305,7 @@ export const PhonePreview = ({
         <DialogHeader>
           <DialogTitle>Preview on a phone</DialogTitle>
           <DialogDescription>
-            Slide {index + 1} of {slideCount}. Swipe, or use the arrows.
+            Slide {index + 1} of {slideCount}. Swipe or scroll sideways, or use the arrows.
           </DialogDescription>
         </DialogHeader>
         <div
@@ -234,13 +313,6 @@ export const PhonePreview = ({
           onKeyDown={(e) => {
             if (e.key === "ArrowRight") go(1);
             if (e.key === "ArrowLeft") go(-1);
-          }}
-          onTouchStart={(e) => (touch.current = e.touches[0].clientX)}
-          onTouchEnd={(e) => {
-            if (touch.current === null) return;
-            const dx = e.changedTouches[0].clientX - touch.current;
-            touch.current = null;
-            if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
           }}
           tabIndex={0}
           role="region"
@@ -251,7 +323,21 @@ export const PhonePreview = ({
             <span>your_account</span>
           </div>
           <div className={styles.slideWrap} style={{ aspectRatio: String(aspect) }}>
-            {pictures[index] ? <img src={pictures[index]} alt={`Slide ${index + 1}`} className={styles.slideImg} /> : <div className={styles.slideLoading}>Drawing slide…</div>}
+            <div
+              ref={track}
+              className={styles.track}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+                if (i !== index && i >= 0 && i < slideCount) setIndex(i);
+              }}
+            >
+              {Array.from({ length: slideCount }, (_, i) => (
+                <div key={i} className={styles.cell}>
+                  {pictures[i] ? <img src={pictures[i]} alt={`Slide ${i + 1}`} className={styles.slideImg} draggable={false} /> : <div className={styles.slideLoading}>Drawing slide…</div>}
+                </div>
+              ))}
+            </div>
             <span className={styles.counter}>
               {index + 1}/{slideCount}
             </span>

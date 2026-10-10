@@ -47,7 +47,7 @@ export const backupFile = async (p: Project): Promise<{ blob: Blob; name: string
   return { blob: new Blob([body], { type: "application/json" }), name: `${slug(p.title)}.spanleaf`, missingVideos };
 };
 
-const LayerShape = z.object({ id: z.string(), type: z.enum(["image", "text", "sticker", "drawing", "video"]), x: z.number(), y: z.number(), w: z.number(), h: z.number(), rotation: z.number() }).passthrough();
+const LayerShape = z.object({ id: z.string(), type: z.enum(["image", "text", "sticker", "drawing", "video", "shape"]), x: z.number(), y: z.number(), w: z.number(), h: z.number(), rotation: z.number() }).passthrough();
 const FileShape = z.object({
   kind: z.literal(FILE_KIND),
   version: z.literal(1),

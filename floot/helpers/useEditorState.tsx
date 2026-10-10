@@ -37,11 +37,12 @@ type State = {
 const HISTORY_LIMIT = 100;
 const COALESCE_MS = 800;
 
-export const useEditorState = (initial: Design) => {
+/** past: undo steps kept from an earlier visit, oldest first. */
+export const useEditorState = (initial: Design, initialPast: Design[] = []) => {
   const [s, setS] = useState<State>({
     design: initial,
     selectedId: null,
-    past: [],
+    past: initialPast.slice(-HISTORY_LIMIT),
     future: [],
     lastKey: null,
     lastAt: 0,
@@ -206,6 +207,8 @@ export const useEditorState = (initial: Design) => {
     design: s.design,
     selectedId: s.selectedId,
     version: s.version,
+    /** The steps undo can go back through, oldest first, so they can be kept. */
+    past: s.past,
     canUndo: s.past.length > 0,
     canRedo: s.future.length > 0,
     undo,

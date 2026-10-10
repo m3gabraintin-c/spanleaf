@@ -1,6 +1,7 @@
 import Konva from "konva";
 import { zipSync } from "fflate";
 import { Design, FORMATS, SLIDE_WIDTH } from "./carouselModel";
+import { PdfPage, makePdf } from "./pdfExport";
 
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "carousel";
@@ -53,8 +54,9 @@ export const renderSlide = (stage: Konva.Stage, content: Konva.Layer, design: De
 export type ExportOptions = {
   /** Which slides, counting from 0. Leave out for all of them. */
   slides?: number[];
-  format: "png" | "jpeg";
-  /** JPEG only, 0.5 to 1. */
+  /** PDF puts every chosen slide in one file, a page each (as JPEG pictures). */
+  format: "png" | "jpeg" | "pdf";
+  /** JPEG and PDF, 0.5 to 1. */
   quality: number;
   /** Width of each picture: 1080, or 2160 for twice the detail. */
   width: 1080 | 2160;
@@ -77,10 +79,12 @@ export const exportSlides = async (
   if (chosen.length === 0) throw new Error("Choose at least one slide to export.");
   const ext = options.format === "png" ? "png" : "jpg";
   const mime = options.format === "png" ? "image/png" : "image/jpeg";
+  const pdf = options.format === "pdf";
   await withExportView(stage, content, async () => {
     const base = slug(title);
     const width = String(design.slideCount).length;
     const files: Record<string, Uint8Array> = {};
+    const pages: PdfPage[] = [];
     for (let k = 0; k < chosen.length; k++) {
       const i = chosen[k];
       const url = content.toDataURL({
@@ -92,11 +96,13 @@ export const exportSlides = async (
         mimeType: mime,
         quality: Math.min(1, Math.max(0.5, options.quality)),
       });
-      files[`${base}-${String(i + 1).padStart(width, "0")}.${ext}`] = bytesOf(url);
+      if (pdf) pages.push({ jpeg: bytesOf(url), width: options.width, height: Math.round((height * options.width) / SLIDE_WIDTH) });
+      else files[`${base}-${String(i + 1).padStart(width, "0")}.${ext}`] = bytesOf(url);
       onProgress?.(k + 1, chosen.length);
       // Let the page breathe between slides.
       await new Promise((r) => setTimeout(r, 0));
     }
+    if (pdf) return download(new Blob([makePdf(pages) as BlobPart], { type: "application/pdf" }), `${base}.pdf`);
     const names = Object.keys(files);
     if (names.length === 1) download(new Blob([files[names[0]] as BlobPart], { type: mime }), names[0]);
     else download(new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: "application/zip" }), `${base}.zip`);

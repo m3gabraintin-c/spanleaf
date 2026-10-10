@@ -189,6 +189,67 @@
   position: relative;
 }
 
+.exactGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-2);
+}
+
+.strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-2);
+}
+
+.strip li {
+  border-radius: var(--radius-sm);
+}
+
+.stripOver {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+}
+
+.thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  overflow: hidden;
+  cursor: grab;
+}
+
+.thumb[aria-current="true"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.thumbNo {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .mineCell .stickerButton {
   width: 100%;
 }
